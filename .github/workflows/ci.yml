@@ -21,6 +21,7 @@ jobs:
           python -m venv venv
           ./venv/bin/pip install --quiet ziglang==0.15.2
           echo "$GITHUB_WORKSPACE/venv/bin" >> "$GITHUB_PATH"
+          export PATH="$PWD/venv/bin:$PATH"
           zig version
 
       # 1) кросс-сборка arm64
