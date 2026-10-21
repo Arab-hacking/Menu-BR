@@ -5,6 +5,9 @@ on:
     branches: [ main, 'arena/*' ]
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -15,41 +18,68 @@ jobs:
         with:
           python-version: '3.12'
 
-      # zig (перекрёстный компилятор) — тот же, что проверен в песочнице
       - name: Install zig (pinned)
         run: |
-          python -m venv venv
-          ./venv/bin/pip install --quiet ziglang==0.15.2
-          echo "$GITHUB_WORKSPACE/venv/bin" >> "$GITHUB_PATH"
-          export PATH="$PWD/venv/bin:$PATH"
-          zig version
+          set -o pipefail
+          {
+            set -x
+            python -m venv venv
+            ./venv/bin/pip install --quiet ziglang==0.15.2
+            export PATH="$PWD/venv/bin:$PATH"
+            zig version
+          } 2>&1 | tee /tmp/ci.log
 
       # 1) кросс-сборка arm64
       - name: Build libmenu-br.so (aarch64)
-        run: ./build.sh zig
+        run: |
+          set -o pipefail
+          { set -x; ./build.sh zig; } 2>&1 | tee -a /tmp/ci.log
 
       # 2) аудит ABI: NEEDED = 0, экспорт ровно 4 символа
       - name: Audit dynamic ABI
         run: |
-          set -e
-          SO=build/libmenu-br.so
-          echo "--- NEEDED (должно быть пусто) ---"
-          need=$(readelf -d "$SO" | grep -c NEEDED || true)
-          [ "$need" = "0" ] || { echo "ERROR: найдены NEEDED-зависимости"; exit 1; }
-          echo "OK: NEEDED = 0"
-          echo "--- экспорт ---"
-          exp=$(readelf --dyn-syms -W "$SO" | awk '$5=="GLOBAL" && $7 ~ /^[0-9]+$/ {print $8}' | sort -u)
-          echo "$exp"
-          [ "$exp" = "$(printf 'JNI_OnLoad\nMenuBR_Init\nMenuBR_IsActive\nMenuBR_Shutdown')" ] \
-            || { echo "ERROR:unexpected exports"; exit 1; }
-          echo "OK: экспорт корректен"
+          set -o pipefail
+          {
+            set -x
+            SO=build/libmenu-br.so
+            echo "--- NEEDED (должно быть пусто) ---"
+            need=$(readelf -d "$SO" | grep -c NEEDED || true)
+            [ "$need" = "0" ] || { echo "ERROR: найдены NEEDED-зависимости"; exit 1; }
+            echo "OK: NEEDED = 0"
+            echo "--- экспорт ---"
+            exp=$(readelf --dyn-syms -W "$SO" | awk '$5=="GLOBAL" && $7 ~ /^[0-9]+$/ {print $8}' | sort -u)
+            echo "$exp"
+            [ "$exp" = "$(printf 'JNI_OnLoad\nMenuBR_Init\nMenuBR_IsActive\nMenuBR_Shutdown')" ] \
+              || { echo "ERROR: unexpected exports"; exit 1; }
+            echo "OK: экспорт корректен"
+          } 2>&1 | tee -a /tmp/ci.log
 
       # 3) хост-тест: ELF/PLT/сигнатуры на reference/libblackrussia-client.so
       - name: Host test (x86_64)
-        run: make test
+        run: |
+          set -o pipefail
+          { set -x; make test; } 2>&1 | tee -a /tmp/ci.log
 
       - name: Upload artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: libmenu-br-arm64
           path: build/libmenu-br.so
+
+      # 4) всегда публикуем лог в ветку ci-diagnostics (для диагностики)
+      - name: Publish CI log
+        if: always()
+        run: |
+          cd /tmp
+          rm -rf ciup && git init -q ciup && cd ciup
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          {
+            echo "# CI log — run ${GITHUB_RUN_ID} — $(date -u +%FT%TZ)"
+            echo ""
+            cat /tmp/ci.log 2>/dev/null || echo "(no log captured)"
+          } > ci-log.txt
+          git add ci-log.txt
+          git -c user.email="ci@arena.bot" -c user.name="ci-log" \
+            commit -q -m "ci log run ${GITHUB_RUN_ID}"
+          git push -qf origin HEAD:ci-diagnostics
