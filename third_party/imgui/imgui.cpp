@@ -1090,7 +1090,13 @@ CODE
 
 // System includes
 #include <stdio.h>      // vsnprintf, sscanf, printf
+
+/* bionic (Android): plain `sscanf` вместо glibc'овского __isoc99_sscanf
+ * (glibc-хедеры объявляют sscanf с asm-лейблом __isoc99_sscanf) */
+extern "C" int br_ssscanf(const char *fmt, ...) __asm__("sscanf");
+#define sscanf br_ssscanf
 #include <stdint.h>     // intptr_t
+
 
 // [Windows] On non-Visual Studio compilers, we default to IMGUI_DISABLE_WIN32_DEFAULT_IME_FUNCTIONS unless explicitly enabled
 #if defined(_WIN32) && !defined(_MSC_VER) && !defined(IMGUI_ENABLE_WIN32_DEFAULT_IME_FUNCTIONS) && !defined(IMGUI_DISABLE_WIN32_DEFAULT_IME_FUNCTIONS)

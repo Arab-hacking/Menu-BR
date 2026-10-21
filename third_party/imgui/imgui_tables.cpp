@@ -196,8 +196,13 @@ Index of this file:
 #endif
 
 #include "imgui.h"
+
 #ifndef IMGUI_DISABLE
 #include "imgui_internal.h"
+/* bionic (Android): plain `sscanf` вместо glibc'овского __isoc99_sscanf
+ * (glibc-хедеры объявляют sscanf с asm-лейблом __isoc99_sscanf) */
+extern "C" int br_ssscanf(const char *fmt, ...) __asm__("sscanf");
+#define sscanf br_ssscanf
 
 // System includes
 #include <stdint.h>     // intptr_t

@@ -49,28 +49,35 @@ if [ "$1" = "zig" ]; then
     # на Android и тащат версионированные ссылки @GLIBC)
     link_so() {
         if [ -n "${FAKE:-}" ]; then
+            # shellcheck disable=SC2086
             "$ZIG" cc -target aarch64-linux-gnu -shared -nostdlib -o build/libmenu-br.so \
-                -Wl,-soname,libmenu-br.so build/obj/*.o "$FAKE"
+                -Wl,-soname,libmenu-br.so build/obj/*.o $FAKE
         else
             "$ZIG" cc -target aarch64-linux-gnu -shared -nostdlib -o build/libmenu-br.so \
                 -Wl,-soname,libmenu-br.so build/obj/*.o
         fi
     }
 
-    # pass 1: без stuba — собираем список UND
+    # pass 1: без stub'ов — собираем список UND
     link_so
     if command -v python3 >/dev/null 2>&1; then
         readelf --dyn-syms -W build/libmenu-br.so \
             | awk '$7=="UND" && $8!~/^$/ {print $8}' | sort -u > build/und.txt
-        python3 tools/gen_fake_libc.py build/und.txt > build/fake_libc.c
-        "$ZIG" cc -target aarch64-linux-gnu -shared build/fake_libc.c \
-            -o build/fake_libc.so -Wl,-soname,libc.so
-        FAKE=build/fake_libc.so
-        # pass 2: со stubom -> NEEDED libc.so
+        # классификация имён по бьониковским таблицам (libc/libm/libdl)
+        python3 tools/gen_fake_libs.py build/und.txt build/ || exit 1
+        FAKE=""
+        for L in libc libm libdl; do
+            [ -s "build/fake_${L}.c" ] || continue
+            "$ZIG" cc -target aarch64-linux-gnu -shared "build/fake_${L}.c" \
+                -o "build/fake_${L}.so" -Wl,-soname,${L}.so
+            FAKE="$FAKE build/fake_${L}.so"
+        done
+        # pass 2: со stub'ами -> NEEDED libc.so/libm.so/libdl.so
+        FAKE="$(eval echo $FAKE)"
         link_so
-        rm -f "$FAKE"
+        rm -f build/fake_*.so
     fi
-    echo "→ build/libmenu-br.so (NEEDED: $(readelf -d build/libmenu-br.so | grep NEEDED | tr '\n' ' '))"
+    echo "→ build/libmenu-br.so (NEEDED: $(readelf -d build/libmenu-br.so | grep NEEDED | sed 's/.*\[//;s/\].*//' | tr '\n' ' '))"
     exit 0
 fi
 

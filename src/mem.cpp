@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <sys/mman.h>
 
+
 #define BR_MAX_RANGES 1024
 
 static br_range_t g_ranges[BR_MAX_RANGES];
@@ -36,10 +37,18 @@ int br_maps_refresh(void)
         while (*p && *p != '\n') p++;
         if (*p) *p++ = 0;
 
+        /* "ADDR-ADDR PERMS ..." — парсим руками (bionic не имеет
+         * glibc-имени __isoc99_sscanf) */
         unsigned long long s = 0, e = 0;
         char perms[8] = {0};
-        int got = sscanf(line, "%llx-%llx %7s", &s, &e, perms);
-        if (got == 3) {
+        const char *dash = strchr(line, '-');
+        if (!dash) continue;
+        s = strtoull(line, 0, 16);
+        e = strtoull(dash + 1, 0, 16);
+        const char *sp = strchr(dash + 1, ' ');
+        if (!sp || e <= s) continue;
+        for (int k = 0; k < 3 && sp[1 + k]; k++) perms[k] = sp[1 + k];
+        {
             br_range_t *r = &tmp[n];
             r->start = (uintptr_t)s;
             r->end   = (uintptr_t)e;

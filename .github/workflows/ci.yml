@@ -62,15 +62,19 @@ jobs:
           {
             set -x
             SO=build/libmenu-br.so
-            # ожидается ровно одна NEEDED: libc.so (bionic)
+            # ожидается: NEEDED ⊆ {libc.so, libm.so, libdl.so} и не пусто
             need_names=$(readelf -d "$SO" | grep NEEDED | sed 's/.*\[\(.*\)\]/\1/' | sort | tr '\n' ' ')
             echo "NEEDED: [${need_names}]"
-            if [ "$need_names" != "libc.so " ]; then
-              echo "ERROR: NEEDED != libc.so: [${need_names}]"
-              rc=1
-            else
-              echo "OK: NEEDED = libc.so"
-            fi
+            case " $need_names " in
+              *libc.so*) : ;;
+              *) echo "ERROR: нет NEEDED libc.so"; rc=1 ;;
+            esac
+            for n in $need_names; do
+              case "$n" in libc.so|libm.so|libdl.so) : ;;
+              *) echo "ERROR: NEEDED вне bionic: $n"; rc=1 ;;
+              esac
+            done
+            [ $rc -eq 0 ] && echo "OK: NEEDED корректны"
             exp=$(readelf --dyn-syms -W "$SO" | awk '$5=="GLOBAL" && $7 ~ /^[0-9]+$/ {print $8}' | sort -u | tr '\n' ' ')
             echo "exports: ${exp}"
             if [ "$exp" != "JNI_OnLoad MenuBR_Init MenuBR_IsActive MenuBR_Shutdown " ]; then
@@ -88,7 +92,22 @@ jobs:
           fi
           exit "$rc"
 
-      # 3) хост-тест: ELF/PLT/сигнатуры на reference/libblackrussia-client.so
+      # 3) аудит: все UND должны быть в bionic libc, NEEDED ⊆ {libc,libdl}
+      - name: Audit vs bionic exports
+        run: |
+          set +e
+          rc=0
+          { set -x; python3 tools/audit_bionic.py build/libmenu-br.so; } > /tmp/stage.log 2>&1
+          rc=$?
+          cat /tmp/stage.log >> /tmp/ci.log
+          if [ "$rc" != "0" ]; then
+            msg=$(tail -6 /tmp/stage.log | tr '\n' '|' | head -c 200)
+            echo "err=BIONIC|${msg}" >> "$GITHUB_OUTPUT"
+            echo "##[error] bionic audit: ${msg}"
+          fi
+          exit "$rc"
+
+      # 4) хост-тест: ELF/PLT/сигнатуры на reference/libblackrussia-client.so
       - name: Host test (x86_64)
         id: h
         env:
