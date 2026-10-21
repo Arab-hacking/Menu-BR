@@ -9,6 +9,7 @@
 
 volatile int   g_draws_since_clear = 0;
 volatile int   g_frame_ui_on = 0;
+volatile int   g_ui_frames = 0;        /* сколько кадров UI отрисовано */
 static double  g_last_clear_ms = 0;
 static double  g_last_ui_ms = 0;
 
@@ -125,37 +126,56 @@ void br_hook_remove(br_plt_hook_t *h)
 
 static void ui_maybe_render(void)
 {
+    static double g_last_stats_ms = 0;
     if (g_frame_ui_on) return;
     double now = br_now_ms();
     int due = 0;
     if (g_draws_since_clear >= 80 && now - g_last_ui_ms >= 12.0) due = 1;
     else if (g_draws_since_clear > 0 && now - g_last_ui_ms >= 200.0) due = 1;
-    if (!due) return;
+    if (!due) {
+        /* статистика раз в 10 c: видно, вызываются ли хуки вообще
+         * (хуки установлены, но игра рисует другой функцией — главный
+         * сценарий "всё активно, а меню нет") */
+        if (now - g_last_stats_ms >= 10000) {
+            g_last_stats_ms = now;
+            LOGI("ui: draws_since_clear=%d ui_frames=%d (хуки вызываются: %s)",
+                 g_draws_since_clear, g_ui_frames,
+                 g_draws_since_clear > 0 || g_ui_frames > 0 ? "да" : "НЕТ");
+        }
+        return;
+    }
 
     g_frame_ui_on = 1;
     g_last_ui_ms = now;
     br_frame_render_ui();
     g_frame_ui_on = 0;
+    g_ui_frames++;
 }
 
 void br_hook_glClear(int mask)
 {
+    static int first = 1;
+    if (first) { first = 0; LOGI("hook: glClear ПОЙМАН (первый вызов)"); }
     if (g_hook_glClear.installed)
         ((void (*)(int))g_hook_glClear.tramp)(mask);
     g_draws_since_clear = 0;
     g_last_clear_ms = br_now_ms();
 }
 
-void br_hook_glDrawArrays(int mode, int first, int count)
+void br_hook_glDrawArrays(int mode, int first_, int count)
 {
+    static int firstcall = 1;
+    if (firstcall) { firstcall = 0; LOGI("hook: glDrawArrays ПОЙМАН (первый вызов)"); }
     if (g_hook_glDrawArrays.installed)
-        ((void (*)(int, int, int))g_hook_glDrawArrays.tramp)(mode, first, count);
+        ((void (*)(int, int, int))g_hook_glDrawArrays.tramp)(mode, first_, count);
     g_draws_since_clear++;
     ui_maybe_render();
 }
 
 void br_hook_glDrawElements(int mode, int count, int type, const void *indices)
 {
+    static int firstcall = 1;
+    if (firstcall) { firstcall = 0; LOGI("hook: glDrawElements ПОЙМАН (первый вызов)"); }
     if (g_hook_glDrawElements.installed)
         ((void (*)(int, int, int, const void *))g_hook_glDrawElements.tramp)(mode, count, type, indices);
     g_draws_since_clear++;
