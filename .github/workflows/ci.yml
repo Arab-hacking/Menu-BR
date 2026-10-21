@@ -19,6 +19,8 @@ jobs:
         with:
           python-version: '3.12'
 
+      # wheel ziglang не кладёт `zig` в venv/bin — бинарник внутри пакета,
+      # поэтому делаем симлинк
       - name: Install zig (pinned)
         run: |
           set -o pipefail
@@ -26,8 +28,10 @@ jobs:
             set -x
             python --version
             python -m venv venv
-            ./venv/bin/pip --version
             ./venv/bin/pip install --quiet ziglang==0.15.2
+            ZIGREAL=$(./venv/bin/python -c \
+              "import os, ziglang; print(os.path.join(os.path.dirname(ziglang.__file__), 'zig'))")
+            ln -sf "$ZIGREAL" venv/bin/zig
             export PATH="$PWD/venv/bin:$PATH"
             zig version
           } 2>&1 | tee /tmp/ci.log
@@ -72,8 +76,8 @@ jobs:
           path: build/libmenu-br.so
 
       # 4) диагностика:
-      #    успех  -> лог в ветку ci-diagnostics
-      #    сбой   -> лог в issue "CI failure run <id>"
+      #    успех -> лог в ветку ci-diagnostics
+      #    сбой  -> лог в issue "CI failure run <id>"
       - name: Publish CI log
         if: always()
         run: |
@@ -95,11 +99,25 @@ jobs:
             git push -qf origin HEAD:ci-diagnostics || echo "push ci-diagnostics: нет прав (некритично)"
             echo "CI green"
           else
-            # красный: issue с полным логом (лимит тела issue — 64KB)
+            # красный: issue с логом (gh -> curl fallback)
             echo "CI failed — публикуем issue"
             head -c 60000 /tmp/ci-log.txt > /tmp/ci-issue.txt
-            gh issue create \
-              --title "CI failure run ${GITHUB_RUN_ID}" \
-              --body-file /tmp/ci-issue.txt \
-              || { echo "gh issue create failed"; tail -c 8000 /tmp/ci-log.txt; }
+            if ! gh issue create \
+                --title "CI failure run ${GITHUB_RUN_ID}" \
+                --body-file /tmp/ci-issue.txt; then
+              echo "gh issue create не сработал — пробую curl"
+              ./venv/bin/python - <<'PY' > /tmp/issue.json
+              import json, os
+              print(json.dumps({
+                  "title": f"CI failure run {os.environ['GITHUB_RUN_ID']}",
+                  "body": open("/tmp/ci-issue.txt").read(),
+              }))
+              PY
+              curl -sS -X POST \
+                -H "Authorization: token ${GITHUB_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                -d @/tmp/issue.json \
+                "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues" \
+                || { echo "curl тоже не сработал, хвост лога:"; tail -c 8000 /tmp/ci-log.txt; }
+            fi
           fi
