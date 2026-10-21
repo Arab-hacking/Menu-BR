@@ -39,12 +39,13 @@ jobs:
       - name: Build libmenu-br.so (aarch64)
         id: b
         run: |
+          set +e
           { set -x; ./build.sh zig; } > /tmp/stage.log 2>&1
           rc=$?
           cat /tmp/stage.log >> /tmp/ci.log
           if [ $rc -ne 0 ]; then
-            msg=$({ grep -aiE "error|undefined reference|cannot|fail" /tmp/stage.log; tail -5 /tmp/stage.log; } | tail -4 | tr '\n' '|' | head -c 200)
-            echo "err=BUILD|${msg}" >> "$GITHUB_OUTPUT"
+            msg=$(head -2 /tmp/stage.log | tr '\n' '|'); msg="|${msg}|$(grep -aiE "error|undefined reference|cannot|fail" /tmp/stage.log | head -3 | tr '\n' '|')"
+            echo "err=BUILD|${msg:0:200}" >> "$GITHUB_OUTPUT"
             echo "##[error] build rc=$rc: ${msg}"
           fi
           exit $rc
@@ -53,6 +54,7 @@ jobs:
       - name: Audit dynamic ABI
         id: a
         run: |
+          set +e
           {
             set -x
             SO=build/libmenu-br.so
@@ -78,6 +80,7 @@ jobs:
       - name: Host test (x86_64)
         id: h
         run: |
+          set +e
           { set -x; make test; } > /tmp/stage.log 2>&1
           rc=$?
           cat /tmp/stage.log >> /tmp/ci.log
