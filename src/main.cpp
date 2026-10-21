@@ -10,9 +10,35 @@
 #include "ui_gl.h"
 #include "jnistub.h"
 #include <pthread.h>
+#include <fcntl.h>
 
 /* из rt_shim.c: вызов деструкторов статических объектов C++ */
 extern "C" void br_cxa_finalize_all(void);
+
+/* Самый ранний маркер: конструктор исполняется в момент dlopen,
+ * ДО JNI_OnLoad. Если файла brmenu-boot.log нет — dlopen не прошёл
+ * (проблема APK: выравнивание/папка/резолв — смотри logcat: grep -i dlopen). */
+__attribute__((constructor)) static void brmenu_ctor(void)
+{
+    const char *dirs[] = {
+        "/data/data/com.br.top/files",
+        "/data/data/com.br.top",
+        "/sdcard/brmenu",
+        "/tmp",
+    };
+    for (size_t i = 0; i < 4; i++) {
+        char path[280];
+        snprintf(path, sizeof(path), "%s/brmenu-boot.log", dirs[i]);
+        int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd < 0) continue;
+        char b[128];
+        int n = snprintf(b, sizeof(b), "[boot] dlopen OK pid=%d tid=%d time=%ld\n",
+                         getpid(), (int)gettid(), (long)time(0));
+        if (n > 0) write(fd, b, (size_t)n);
+        close(fd);
+        return;
+    }
+}
 
 static volatile int g_active   = 0;
 static volatile int g_waiting  = 0;  /* отложенный init идёт */
@@ -184,8 +210,10 @@ extern "C" int MenuBR_IsActive(void)
 /* ---------- JNI ---------- */
 extern "C" __attribute__((visibility("default"))) jint JNI_OnLoad(JavaVM *vm, void *reserved)
 {
-    (void)vm; (void)reserved;
+    ANDROID_LOGI("JNI_OnLoad вызван (vm=%p) — старт MenuBR_Init", (void *)vm);
+    (void)reserved;
     MenuBR_Init();
+    ANDROID_LOGI("MenuBR_Init возвращён");
     return 0x00010006 /* JNI_VERSION_1_6 */;
 }
 

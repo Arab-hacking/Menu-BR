@@ -40,16 +40,17 @@ void br_log_init(const char *dir)
 {
     g_level = g_cfg.log_level;
 
-    /* основной каталог — приватные данные приложения, затем fallback'и */
-    const char *dirs[5] = {
+    /* основной каталог — priv-app files приложения, затем fallback'и */
+    const char *dirs[6] = {
         dir,
+        "/data/data/com.br.top/files",
         "/sdcard/brmenu",
         "/data/local/tmp/brmenu",
         "/tmp",
         0,
     };
     for (int i = 0; dirs[i]; i++) {
-        if (i == 1 || i == 2) mkdir(dirs[i], 0700); /* каталоги fallback создаём сами */
+        mkdir(dirs[i], 0700); /* создаём если нет (priv-каталог существует сам) */
         char path[280];
         snprintf(path, sizeof(path), "%s/brmenu.log", dirs[i]);
         open_log_file(path);
