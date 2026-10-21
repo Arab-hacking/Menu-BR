@@ -552,8 +552,14 @@ void br_frame_render_ui(void)
     int h = vp[3] > 0 ? vp[3] : 720;
 
     if (!g_uigl_ready) {
-        if (br_uigl_init(w, h)) g_uigl_ready = true;
-        else return;
+        if (br_uigl_init(w, h)) {
+            g_uigl_ready = true;
+            LOGI("ui: GL-бэкенд готов %dx%d (первый кадр)", w, h);
+        } else {
+            static int ui_init_fail = 0;
+            if (++ui_init_fail <= 3) LOGE("ui: br_uigl_init не удался (попытка %d)", ui_init_fail);
+            return;
+        }
     }
 
     ImGui::NewFrame();
@@ -570,4 +576,8 @@ void br_frame_render_ui(void)
 
     ImGui::Render();
     br_uigl_render(w, h);
+
+    static int frame_n = 0;
+    if (++frame_n == 1) LOGI("ui: кадр 1 отрисован");
+    else if (frame_n % 300 == 0) LOGI("ui: кадров всего %d", frame_n);
 }

@@ -198,25 +198,34 @@ static void resolve_local(void)
     }
 }
 
+static pthread_t g_sample_tid;
+static volatile int g_sample_run = 0;
+
 static void *sample_thread(void *arg)
 {
     (void)arg;
     double last = 0;
-    for (;;) {
+    int iter = 0;
+    LOGI("state: sampler запущен");
+    while (g_sample_run) {
         double now = br_now_ms();
         if (now - last >= 33.0) {
             sample_players(now);
             sample_vehicles(now);
             resolve_local();
             last = now;
+            if (++iter % 200 == 1)
+                LOGI("state: sample online=%d veh=%d local=%d pos=(%.0f,%.0f,%.0f)",
+                     g_st.players_online, g_st.vehicles_count, g_st.local_id_eff,
+                     g_st.local_id_eff >= 0 ? g_st.players[g_st.local_id_eff].pos[0] : 0,
+                     g_st.local_id_eff >= 0 ? g_st.players[g_st.local_id_eff].pos[1] : 0,
+                     g_st.local_id_eff >= 0 ? g_st.players[g_st.local_id_eff].pos[2] : 0);
         }
         usleep(8000);
     }
+    LOGI("state: sampler остановлен");
     return 0;
 }
-
-static pthread_t g_sample_tid;
-static volatile int g_sample_run = 0;
 
 int br_state_start_sampler(void)
 {
@@ -224,8 +233,15 @@ int br_state_start_sampler(void)
     g_sample_run = 1;
     if (pthread_create(&g_sample_tid, 0, sample_thread, 0) != 0) {
         g_sample_run = 0;
+        LOGE("state: не удалось создать тред сэмплера");
         return -1;
     }
     pthread_detach(g_sample_tid);
     return 0;
+}
+
+void br_state_stop_sampler(void)
+{
+    if (!g_sample_run) return;
+    g_sample_run = 0;
 }

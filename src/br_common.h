@@ -84,6 +84,9 @@ static inline double br_wall_ms(void)
 void  br_log_init(const char *dir);
 void  br_log(const char *lvl, const char *fmt, ...);
 int   br_log_read(char *out, int out_len, int lines, char *lvl_out);
+void  br_crash_init(void);        /* SIGSEGV/... -> дамп (bt + maps) в лог */
+void  br_heartbeat_start(void);   /* "alive" каждые 2 c в logcat */
+void  br_heartbeat_stop(void);
 #define LOGI(...) br_log("I", __VA_ARGS__)
 #define LOGW(...) br_log("W", __VA_ARGS__)
 #define LOGE(...) br_log("E", __VA_ARGS__)

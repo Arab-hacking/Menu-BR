@@ -26,15 +26,36 @@ static int    g_level = 3;
 static char   g_file_path[256];
 static FILE *g_file = 0;
 
+static void open_log_file(const char *path)
+{
+    FILE *f = fopen(path, "w");
+    if (!f) return;
+    setvbuf(f, 0, _IONBF, 0);   /* без буферизации — не терять лог при краше */
+    g_file = f;
+    snprintf(g_file_path, sizeof(g_file_path), "%s", path);
+    fprintf(f, "=== Menu-BR log === pid=%d path=%s\n", getpid(), path);
+}
+
 void br_log_init(const char *dir)
 {
     g_level = g_cfg.log_level;
-    snprintf(g_file_path, sizeof(g_file_path), "%s/brmenu.log", dir);
-    FILE *f = fopen(g_file_path, "w");
-    if (f) {
-        g_file = f;
-        fprintf(f, "=== Menu-BR log ===\n");
+
+    /* основной каталог — приватные данные приложения, затем fallback'и */
+    const char *dirs[5] = {
+        dir,
+        "/sdcard/brmenu",
+        "/data/local/tmp/brmenu",
+        "/tmp",
+        0,
+    };
+    for (int i = 0; dirs[i]; i++) {
+        if (i == 1 || i == 2) mkdir(dirs[i], 0700); /* каталоги fallback создаём сами */
+        char path[280];
+        snprintf(path, sizeof(path), "%s/brmenu.log", dirs[i]);
+        open_log_file(path);
+        if (g_file) { ANDROID_LOGI("log: файл %s", path); return; }
     }
+    ANDROID_LOGE("log: ни один каталог не доступен");
 }
 
 void br_log(const char *lvl, const char *fmt, ...)
@@ -94,4 +115,110 @@ int br_log_read(char *out, int out_len, int lines, char *lvl_out)
     }
     pthread_mutex_unlock(&g_log_mtx);
     return n;
+}
+
+/* ================= crash-дамп ================= */
+
+#include <signal.h>
+#include <execinfo.h>
+
+static void crash_dump(int sig, siginfo_t *si, void *uc)
+{
+    (void)uc;
+    const char *name = "?";
+    switch (sig) {
+    case SIGSEGV: name = "SIGSEGV"; break;
+    case SIGBUS:  name = "SIGBUS";  break;
+    case SIGABRT: name = "SIGABRT"; break;
+    case SIGFPE:  name = "SIGFPE";  break;
+    case SIGILL:  name = "SIGILL";  break;
+    case SIGTRAP: name = "SIGTRAP"; break;
+    }
+
+    int fd = (g_file && fileno(g_file) >= 0) ? fileno(g_file) : -1;
+    if (fd < 0) fd = open("/dev/stderr", O_WRONLY);
+    if (fd < 0) _exit(128 + sig);
+
+    char b[512];
+    int n = snprintf(b, sizeof(b),
+        "\n===== CRASH %s (si_addr=%p) pid=%d tid=%d =====\n",
+        name, si ? si->si_addr : 0, getpid(), (long)gettid());
+    if (n > 0) write(fd, b, (size_t)n);
+
+    /* backtrace в fd (async-signal-safe) */
+    void *bt[48];
+    int bn = backtrace(bt, 48);
+    if (bn > 0) {
+        n = snprintf(b, sizeof(b), "--- backtrace (%d) ---\n", bn);
+        if (n > 0) write(fd, b, (size_t)n);
+        backtrace_symbols_fd(bt, bn, fd);
+    }
+
+    /* maps: базовые адреса модулей в момент краха */
+    int mf = open("/proc/self/maps", O_RDONLY);
+    if (mf >= 0) {
+        n = snprintf(b, sizeof(b), "--- /proc/self/maps ---\n");
+        if (n > 0) write(fd, b, (size_t)n);
+        char mb[1024];
+        ssize_t r;
+        int total = 0;
+        while ((r = read(mf, mb, sizeof(mb))) > 0 && total < 65536) {
+            write(fd, mb, (size_t)r);
+            total += (int)r;
+        }
+        close(mf);
+    }
+
+    /* завершаем дефолтным обработчиком (tombstone как обычно) */
+    signal(sig, SIG_DFL);
+    raise(sig);
+    _exit(128 + sig);
+}
+
+void br_crash_init(void)
+{
+    static const int sigs[] = { SIGSEGV, SIGBUS, SIGABRT, SIGFPE, SIGILL, SIGTRAP };
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = crash_dump;
+    sa.sa_flags = SA_SIGINFO | SA_RESETHAND; /* после дампа — дефолтное поведение */
+    for (size_t i = 0; i < sizeof(sigs) / sizeof(sigs[0]); i++)
+        sigaction(sigs[i], &sa, 0);
+}
+
+/* ================= heartbeat ================= */
+
+static volatile int g_hb_run = 0;
+static pthread_t    g_hb_tid;
+static int          g_hb_last_pid_logged = 0;
+
+static void *hb_thread(void *arg)
+{
+    (void)arg;
+    int tick = 0;
+    while (g_hb_run) {
+        for (int i = 0; i < 20 && g_hb_run; i++) usleep(100000); /* 2 c */
+        if (!g_hb_run) break;
+        tick++;
+        int mytid = (int)gettid();
+        if (mytid != g_hb_last_pid_logged) {
+            g_hb_last_pid_logged = mytid;
+            ANDROID_LOGI("hb: thread started tid=%d", mytid);
+        }
+        ANDROID_LOGI("hb: alive tick=%d", tick);
+    }
+    return 0;
+}
+
+void br_heartbeat_start(void)
+{
+    if (g_hb_run) return;
+    g_hb_run = 1;
+    if (pthread_create(&g_hb_tid, 0, hb_thread, 0) != 0) { g_hb_run = 0; return; }
+    pthread_detach(g_hb_tid);
+}
+
+void br_heartbeat_stop(void)
+{
+    g_hb_run = 0;
 }

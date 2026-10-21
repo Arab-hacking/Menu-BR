@@ -66,5 +66,6 @@ uintptr_t br_state_player_veh(int id);
 
 /* Пуск тред-сэмплера (~30 Гц). 0 = ок. */
 int  br_state_start_sampler(void);
+void  br_state_stop_sampler(void);
 
 #endif

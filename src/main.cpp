@@ -106,14 +106,21 @@ extern "C" int MenuBR_Init(void)
         return BRMENU_OK;
     }
 
+    /* лог — в приватные данные приложения, с fallback'ами; без буферов */
+    br_log_init("/data/data/com.br.top");
+    br_crash_init();               /* дамп на SIGSEGV/SIGABRT/... */
+    br_heartbeat_start();          /* logcat: "hb: alive" каждые 2 c */
+    LOGI("=== Menu-BR init === (build-id цели: 16.110/16.106, soname libblackrussia-client.so)");
+
     br_cfg_init();
     br_cfg_load();
-    br_log_init("/sdcard/brmenu");
-    LOGI("=== Menu-BR init ===");
+    LOGI("cfg: local_id=%d turbo=%d build_force=%d", g_cfg.local_id, g_cfg.turbo_on, g_cfg.build);
 
     br_feat_init();
 
+    LOGI("detect: старт");
     int rc = br_detect_init();
+    LOGI("detect: rc=%d", rc);
     if (rc == BRMENU_OK) {
         pthread_mutex_unlock(&g_init_mtx);
         rc = init_after_detect();
@@ -150,6 +157,8 @@ extern "C" int MenuBR_Shutdown(void)
     g_shutdown = 1;
     pthread_mutex_unlock(&g_init_mtx);
 
+    br_heartbeat_stop();
+    br_state_stop_sampler();
     br_input_stop();
     br_monitor_stop();
     if (g_hook_glDrawElements.installed) br_hook_remove(&g_hook_glDrawElements);
