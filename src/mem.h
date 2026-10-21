@@ -34,6 +34,7 @@ bool br_readf(uintptr_t addr, float *out, int n);
 /* Найти basename .so по строке (например "libblackrussia-client.so").
  * Возвращает базовый адрес первого LOAD-сегмента (vaddr=0) или 0. */
 uintptr_t br_find_module(const char *soname);
+int       br_maps_list_libs(char *out, int out_len);   /* debug: имена .so, \n-разделённые */
 
 /* Диапазоны .bss/.data модуля (RW LOAD-сегменты) для сканов. */
 typedef struct { uintptr_t start, end; } br_span_t;

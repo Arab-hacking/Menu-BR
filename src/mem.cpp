@@ -124,6 +124,31 @@ bool br_readf(uintptr_t addr, float *out, int n)
     return br_safe_read(addr, out, n * 4);
 }
 
+/* Debug: имена всех .so из maps (уникальные, по одному в строке).
+ * Возвращает количество или -1. */
+int br_maps_list_libs(char *out, int out_len)
+{
+    if (!out || out_len <= 0) return -1;
+    out[0] = 0;
+    br_maps_refresh();
+
+    pthread_mutex_lock(&g_mem_mtx);
+    int n = 0;
+    int pos = 0;
+    for (int i = 0; i < g_n_ranges && pos < out_len - 64; i++) {
+        const char *nm = g_ranges[i].name;
+        if (nm[0] == '[') continue;      /* [anon]/[stack]/[heap] */
+        bool dup = false;
+        for (int j = 0; j < i; j++)
+            if (strcmp(g_ranges[j].name, nm) == 0) { dup = true; break; }
+        if (dup) continue;
+        pos += snprintf(out + pos, (size_t)(out_len - pos), "%s\n", nm);
+        n++;
+    }
+    pthread_mutex_unlock(&g_mem_mtx);
+    return n;
+}
+
 /* Базовый адрес модуля = начало первого LOAD-сегмента с учётом min(p_vaddr). */
 uintptr_t br_find_module(const char *soname)
 {

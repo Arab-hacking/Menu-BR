@@ -121,8 +121,27 @@ static void *deferred_init(void *arg)
     int proceed = (base && !g_shutdown && !g_active);
     pthread_mutex_unlock(&g_init_mtx);
     if (!proceed) {
-        if (!base) LOGE("игровой модуль не найден за 120 c — Menu-BR выключен");
-        else       LOGI("deferred init: init уже выполнен/остановлен");
+        if (!base) {
+            LOGE("игровой модуль не найден за 120 c — Menu-BR выключен");
+            /* диагностика: какие .so реально загружены (имя/путь могли
+             * отличаться от ожидаемого) */
+            char libs[8192];
+            int nl = br_maps_list_libs(libs, sizeof(libs));
+            LOGW("libs в процессе: %d шт", nl);
+            for (int i = 0; libs[i]; i++)
+                if (libs[i] == '\n') libs[i] = ',';
+            for (char *q = libs; *q; ) {
+                char chunk[180];
+                int n = snprintf(chunk, sizeof(chunk), "%.*s", 170, q);
+                if (n < 0) n = 0;
+                if (n >= (int)sizeof(chunk)) n = (int)sizeof(chunk) - 1;
+                chunk[n] = 0;
+                LOGW("libs: %s", chunk);
+                q += (n > 0 ? n : 1);
+            }
+        } else {
+            LOGI("deferred init: init уже выполнен/остановлен");
+        }
         pthread_mutex_lock(&g_init_mtx);
         g_waiting = 0;
         pthread_mutex_unlock(&g_init_mtx);
