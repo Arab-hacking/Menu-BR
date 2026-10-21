@@ -38,7 +38,8 @@ static void open_log_file(const char *path)
 
 void br_log_init(const char *dir)
 {
-    g_level = g_cfg.log_level;
+    /* 0 = "ещё не инициализировано" (g_cfg нулевой) — дефолт: info */
+    g_level = g_cfg.log_level ? g_cfg.log_level : 3;
 
     /* 1) внешний Android/data/<pkg>/files (виден в файловом менеджере),
        2) priv files, затем fallback'и */
@@ -209,6 +210,10 @@ static void *hb_thread(void *arg)
             ANDROID_LOGI("hb: thread started tid=%d", mytid);
         }
         ANDROID_LOGI("hb: alive tick=%d", tick);
+        /* и в файл — на крест-билде logcat недоступен (нет __ANDROID__),
+         * это единственный "живой" маркер в brmenu.log */
+        if (tick % 5 == 0)
+            br_log("I", "hb: alive tick=%d pid=%d", tick, (int)getpid());
     }
     return 0;
 }

@@ -153,14 +153,15 @@ extern "C" int MenuBR_Init(void)
         return BRMENU_OK;
     }
 
-    /* лог — в приватные данные приложения, с fallback'ами; без буферов */
+    /* config по умолчанию СНАЧАЛА: br_log_init читает g_cfg.log_level —
+     * иначе уровень=0 и ВСЕ строки лога молча отбрасываются */
+    br_cfg_init();
     br_log_init("/data/data/com.br.top");
-    br_crash_init();               /* дамп на SIGSEGV/SIGABRT/... */
-    br_heartbeat_start();          /* logcat: "hb: alive" каждые 2 c */
+    br_crash_init();                /* дамп на SIGSEGV/SIGABRT/... */
+    br_heartbeat_start();
     LOGI("=== Menu-BR init === (build-id цели: 16.110/16.106, soname libblackrussia-client.so)");
 
-    br_cfg_init();
-    br_cfg_load();
+    br_cfg_load();                  /* переопределения из файла */
     LOGI("cfg: local_id=%d turbo=%d build_force=%d", g_cfg.local_id, g_cfg.turbo_on, g_cfg.build);
 
     br_feat_init();
