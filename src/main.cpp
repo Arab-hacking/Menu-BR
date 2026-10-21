@@ -15,9 +15,25 @@
 /* из rt_shim.c: вызов деструкторов статических объектов C++ */
 extern "C" void br_cxa_finalize_all(void);
 
+/* forward */
+extern "C" int MenuBR_Init(void);
+
+static void *ctor_init_thread(void *arg)
+{
+    (void)arg;
+    MenuBR_Init();
+    return 0;
+}
+
 /* Самый ранний маркер: конструктор исполняется в момент dlopen,
  * ДО JNI_OnLoad. Если файла brmenu-boot.log нет — dlopen не прошёл
- * (проблема APK: выравнивание/папка/резолв — смотри logcat: grep -i dlopen). */
+ * (проблема APK: выравнивание/папка/резолв — смотри logcat: grep -i dlopen).
+ *
+ * СЕЛЬФ-СТАРТ: JNI_OnLoad вызывает JVM только при загрузке через
+ * System.loadLibrary; если smali грузит .so обычным dlopen — init
+ * запустим сами из конструктора (в отдельном треде, чтобы не держать
+ * блокировку dlopen). Повторный вход через JNI_OnLoad безопасен:
+ * g_active/g_waiting + mutex. */
 __attribute__((constructor)) static void brmenu_ctor(void)
 {
     const char *dirs[] = {
@@ -36,8 +52,13 @@ __attribute__((constructor)) static void brmenu_ctor(void)
                          getpid(), (int)gettid(), (long)time(0));
         if (n > 0) write(fd, b, (size_t)n);
         close(fd);
-        return;
+        break;
     }
+
+    /* старт инициализации (идемпотентен: JNI_OnLoad повторит и вылетит по флагу) */
+    pthread_t t;
+    if (pthread_create(&t, 0, ctor_init_thread, 0) == 0)
+        pthread_detach(t);
 }
 
 static volatile int g_active   = 0;
