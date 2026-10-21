@@ -58,26 +58,35 @@ jobs:
         id: a
         run: |
           set +e
+          rc=0
           {
             set -x
             SO=build/libmenu-br.so
-            need=$(readelf -d "$SO" | grep -c NEEDED || true)
-            [ "$need" = "0" ] || { echo "ERROR: NEEDED=$need"; exit 1; }
-            echo "OK: NEEDED = 0"
-            exp=$(readelf --dyn-syms -W "$SO" | awk '$5=="GLOBAL" && $7 ~ /^[0-9]+$/ {print $8}' | sort -u)
-            echo "$exp"
-            [ "$exp" = "$(printf 'JNI_OnLoad\nMenuBR_Init\nMenuBR_IsActive\nMenuBR_Shutdown')" ] \
-              || { echo "ERROR: unexpected exports"; exit 1; }
-            echo "OK: экспорт корректен"
+            # ожидается ровно одна NEEDED: libc.so (bionic)
+            need_names=$(readelf -d "$SO" | grep NEEDED | sed 's/.*\[\(.*\)\]/\1/' | sort | tr '\n' ' ')
+            echo "NEEDED: [${need_names}]"
+            if [ "$need_names" != "libc.so " ]; then
+              echo "ERROR: NEEDED != libc.so: [${need_names}]"
+              rc=1
+            else
+              echo "OK: NEEDED = libc.so"
+            fi
+            exp=$(readelf --dyn-syms -W "$SO" | awk '$5=="GLOBAL" && $7 ~ /^[0-9]+$/ {print $8}' | sort -u | tr '\n' ' ')
+            echo "exports: ${exp}"
+            if [ "$exp" != "JNI_OnLoad MenuBR_Init MenuBR_IsActive MenuBR_Shutdown " ]; then
+              echo "ERROR: unexpected exports: ${exp}"
+              rc=1
+            else
+              echo "OK: экспорт корректен"
+            fi
           } > /tmp/stage.log 2>&1
-          rc=$?
           cat /tmp/stage.log >> /tmp/ci.log
-          if [ $rc -ne 0 ]; then
+          if [ "$rc" != "0" ]; then
             msg=$(tail -4 /tmp/stage.log | tr '\n' '|' | head -c 200)
             echo "err=ABI|${msg}" >> "$GITHUB_OUTPUT"
-            echo "##[error] audit rc=$rc: ${msg}"
+            echo "##[error] audit: ${msg}"
           fi
-          exit $rc
+          exit "$rc"
 
       # 3) хост-тест: ELF/PLT/сигнатуры на reference/libblackrussia-client.so
       - name: Host test (x86_64)
