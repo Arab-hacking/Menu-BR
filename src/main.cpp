@@ -111,10 +111,15 @@ static void *deferred_init(void *arg)
 {
     (void)arg;
     uintptr_t base = 0;
-    for (int i = 0; i < 240; i++) {   /* 120 секунд */
+    /* ждём игровую библиотеку до 15 минут: когда именно игра загрузит
+     * libblackrussia-client.so зависит от сценария (иногда через
+     * минуту-две после старта процесса); статус в лог раз в 60 c */
+    for (int i = 0; i < 900; i++) {   /* 900 × 1 c */
         base = br_find_module("libblackrussia-client.so");
         if (base) break;
-        usleep(500000);
+        if (i > 0 && i % 60 == 0)
+            LOGI("deferred: жду libblackrussia-client.so... %d c", i);
+        usleep(1000000);
     }
 
     pthread_mutex_lock(&g_init_mtx);
@@ -122,7 +127,7 @@ static void *deferred_init(void *arg)
     pthread_mutex_unlock(&g_init_mtx);
     if (!proceed) {
         if (!base) {
-            LOGE("игровой модуль не найден за 120 c — Menu-BR выключен");
+            LOGE("игровой модуль не найден за 15 минут — Menu-BR выключен");
             /* диагностика: какие .so реально загружены (имя/путь могли
              * отличаться от ожидаемого) */
             char libs[8192];
@@ -198,7 +203,7 @@ extern "C" int MenuBR_Init(void)
     }
 
     /* игровой .so ещё не в процессе — отложенный init */
-    LOGI("libblackrussia-client.so ещё не загружен — deferred init (до 120 c)");
+    LOGI("libblackrussia-client.so ещё не загружен — deferred init (до 15 минут)");
     g_waiting = 1;
     pthread_mutex_unlock(&g_init_mtx);
 
