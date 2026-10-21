@@ -1,0 +1,78 @@
+/*
+ * off.cpp — таблицы адресов
+ */
+#include "br_common.h"
+
+const br_build_table_t BR_TABLES[] = {
+    /* [0] — placeholder для BR_BUILD_AUTO */
+    { "auto", {0}, 0,0,0,0, 0,0,0,0,0, 0x118, 0, 0x118, 0x150, 0xB8, 0x430, 0x54A, 0,
+      {0},{0},{0},{0} },
+
+    /* [1] 16.106.17587 — из документации (VEHICLE_STRUCTURE.md, PLAYER_STRUCTURE.md) */
+    {
+        "16.106.17587",
+        /* build-id неизвестен */ {0},
+        /* глобалы */
+        0x37809C8,   /* pool_glob (VehiclePool*) */
+        0x37809C0,   /* player_mgr_glob (PlayerManager*) */
+        0x354C5D8,   /* ped_table_glob (шаг 0xF8) */
+        0x3780C74,   /* color_table_glob (16B/игрок) */
+        /* функции */
+        0x1990A78,   /* dispatcher (NetGame.cpp) */
+        0x19D2FDC,   /* GetByNetId */
+        0x19AADA4,   /* GetPlayerById */
+        0x1B815A0,   /* CreateVehicle(modelIndex) */
+        0x1B7F444,   /* CVehicle::метод(bool) — двигатель/свет (гипотеза из доков) */
+        /* поля */
+        0x148, 0x000, 0x118, 0x150, 0xB8, 0x430, 0x54A,
+        /* sync_id_glob неизвестен → монитор отключён */
+        0,
+        /* сигнатура GetByNetId: общий признак — лимит id <= 1999 (cmp w8,#0x7cf) */
+        { 0x1f, 0x3d, 0x1f, 0x71, 0x00, 0x00, 0x00, 0x00 },
+        { 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00 },
+        /* сигнатура диспетчера неизвестна */
+        { 0 }, { 0 },
+    },
+
+    /* [2] 16.110.18323 — сверено с реальным бинарником (см. комментарии в off.h) */
+    {
+        "16.110.18323",
+        /* build-id */
+        { 0x80,0x5b,0xe0,0x86,0x54,0x8e,0xb2,0x36,0xee,0x46,
+          0x9e,0x88,0xc1,0x1d,0x5d,0x3e,0x66,0xcf,0xe1,0xba },
+        /* глобалы (подтверждены .rela.dyn) */
+        0x37FBEC8,   /* pool_glob */
+        0x37FBEC0,   /* player_mgr_glob */
+        0x35C7A28,   /* ped_table_glob */
+        0x37FC174,   /* color_table_glob */
+        /* функции */
+        0x19D4664,   /* dispatcher (найдён по ассерт-строке, switch по id) */
+        0x1A1C1C8,   /* GetByNetId (дизассемблировано, тело совпадает) */
+        0x19F0E48,   /* GetPlayerById (по докам сравнения) */
+        0x00000000,  /* CreateVehicle — не выделен для этой сборки */
+        0x00000000,  /* метод двигателя — не выделен */
+        /* поля (перепроверены кодом новой сборки) */
+        0x540, 0x548, 0x118, 0x150, 0xB8, 0x430, 0x54A,
+        /* packetId = *(0x49B7E0 + 0xEB8) — из кода диспетчера */
+        0x49C698,
+        /* сигнатура GetByNetId: and w8,w1,#0xffff; cmp w8,#0x7cf */
+        { 0x28, 0x3c, 0x00, 0x12, 0x1f, 0x3d, 0x1f, 0x71 },
+        { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff },
+        /* диспетчер, 36B — единственное вхождение в .text 16.110:
+         * sub sp,#0x60; stp x29,x30,[sp,#0x20]; str x23,[sp,#0x30];
+         * stp x22,x21,[sp,#0x40]; stp x20,x19,[sp,#0x50]; mov x29,sp;
+         * nop; mov w19,w0; mov w20,w1 */
+        { 0xff,0x83,0x01,0xd1, 0xfd,0x7b,0x02,0xa9,
+          0xf7,0x1b,0x00,0xf9, 0xf6,0x57,0x04,0xa9,
+          0xf4,0x4f,0x05,0xa9, 0xfd,0x83,0x00,0x91,
+          0x57,0xd0,0x3b,0xd5, 0xf3,0x03,0x01,0x2a,
+          0xf4,0x03,0x00,0x2a },
+        { 0xff,0xff,0xff,0xff, 0xff,0xff,0xff,0xff,
+          0xff,0xff,0xff,0xff, 0xff,0xff,0xff,0xff,
+          0xff,0xff,0xff,0xff, 0xff,0xff,0xff,0xff,
+          0xff,0xff,0xff,0xff, 0xff,0xff,0xff,0xff,
+          0xff,0xff,0xff,0xff },
+    },
+};
+
+const int BR_TABLE_COUNT = (int)(sizeof(BR_TABLES) / sizeof(BR_TABLES[0]));
