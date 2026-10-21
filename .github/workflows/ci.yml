@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   build-and-test:
@@ -23,7 +24,9 @@ jobs:
           set -o pipefail
           {
             set -x
+            python --version
             python -m venv venv
+            ./venv/bin/pip --version
             ./venv/bin/pip install --quiet ziglang==0.15.2
             export PATH="$PWD/venv/bin:$PATH"
             zig version
@@ -59,6 +62,7 @@ jobs:
         run: |
           set -o pipefail
           { set -x; make test; } 2>&1 | tee -a /tmp/ci.log
+          touch /tmp/ci_ok
 
       - name: Upload artifact
         if: success()
@@ -67,19 +71,35 @@ jobs:
           name: libmenu-br-arm64
           path: build/libmenu-br.so
 
-      # 4) всегда публикуем лог в ветку ci-diagnostics (для диагностики)
+      # 4) диагностика:
+      #    успех  -> лог в ветку ci-diagnostics
+      #    сбой   -> лог в issue "CI failure run <id>"
       - name: Publish CI log
         if: always()
         run: |
-          cd /tmp
-          rm -rf ciup && git init -q ciup && cd ciup
-          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           {
             echo "# CI log — run ${GITHUB_RUN_ID} — $(date -u +%FT%TZ)"
             echo ""
             cat /tmp/ci.log 2>/dev/null || echo "(no log captured)"
-          } > ci-log.txt
-          git add ci-log.txt
-          git -c user.email="ci@arena.bot" -c user.name="ci-log" \
-            commit -q -m "ci log run ${GITHUB_RUN_ID}"
-          git push -qf origin HEAD:ci-diagnostics
+          } > /tmp/ci-log.txt
+
+          if [ -f /tmp/ci_ok ]; then
+            # зелёный: публикуем лог в ветку
+            cd /tmp
+            rm -rf ciup && git init -q ciup && cd ciup
+            git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            cp /tmp/ci-log.txt ci-log.txt
+            git add ci-log.txt
+            git -c user.email="ci@arena.bot" -c user.name="ci-log" \
+              commit -q -m "ci log run ${GITHUB_RUN_ID}"
+            git push -qf origin HEAD:ci-diagnostics || echo "push ci-diagnostics: нет прав (некритично)"
+            echo "CI green"
+          else
+            # красный: issue с полным логом (лимит тела issue — 64KB)
+            echo "CI failed — публикуем issue"
+            head -c 60000 /tmp/ci-log.txt > /tmp/ci-issue.txt
+            gh issue create \
+              --title "CI failure run ${GITHUB_RUN_ID}" \
+              --body-file /tmp/ci-issue.txt \
+              || { echo "gh issue create failed"; tail -c 8000 /tmp/ci-log.txt; }
+          fi
