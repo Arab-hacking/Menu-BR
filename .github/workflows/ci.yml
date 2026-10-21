@@ -26,7 +26,6 @@ jobs:
           set -o pipefail
           {
             set -x
-            python --version
             python -m venv venv
             ./venv/bin/pip install --quiet ziglang==0.15.2
             ZIGREAL=$(./venv/bin/python -c \
@@ -38,34 +37,56 @@ jobs:
 
       # 1) кросс-сборка arm64
       - name: Build libmenu-br.so (aarch64)
+        id: b
         run: |
-          set -o pipefail
-          { set -x; ./build.sh zig; } 2>&1 | tee -a /tmp/ci.log
+          { set -x; ./build.sh zig; } > /tmp/stage.log 2>&1
+          rc=$?
+          cat /tmp/stage.log >> /tmp/ci.log
+          if [ $rc -ne 0 ]; then
+            msg=$({ grep -aiE "error|undefined reference|cannot|fail" /tmp/stage.log; tail -5 /tmp/stage.log; } | tail -4 | tr '\n' '|' | head -c 200)
+            echo "err=BUILD|${msg}" >> "$GITHUB_OUTPUT"
+            echo "##[error] build rc=$rc: ${msg}"
+          fi
+          exit $rc
 
       # 2) аудит ABI: NEEDED = 0, экспорт ровно 4 символа
       - name: Audit dynamic ABI
+        id: a
         run: |
-          set -o pipefail
           {
             set -x
             SO=build/libmenu-br.so
-            echo "--- NEEDED (должно быть пусто) ---"
             need=$(readelf -d "$SO" | grep -c NEEDED || true)
-            [ "$need" = "0" ] || { echo "ERROR: найдены NEEDED-зависимости"; exit 1; }
+            [ "$need" = "0" ] || { echo "ERROR: NEEDED=$need"; exit 1; }
             echo "OK: NEEDED = 0"
-            echo "--- экспорт ---"
             exp=$(readelf --dyn-syms -W "$SO" | awk '$5=="GLOBAL" && $7 ~ /^[0-9]+$/ {print $8}' | sort -u)
             echo "$exp"
             [ "$exp" = "$(printf 'JNI_OnLoad\nMenuBR_Init\nMenuBR_IsActive\nMenuBR_Shutdown')" ] \
               || { echo "ERROR: unexpected exports"; exit 1; }
             echo "OK: экспорт корректен"
-          } 2>&1 | tee -a /tmp/ci.log
+          } > /tmp/stage.log 2>&1
+          rc=$?
+          cat /tmp/stage.log >> /tmp/ci.log
+          if [ $rc -ne 0 ]; then
+            msg=$(tail -4 /tmp/stage.log | tr '\n' '|' | head -c 200)
+            echo "err=ABI|${msg}" >> "$GITHUB_OUTPUT"
+            echo "##[error] audit rc=$rc: ${msg}"
+          fi
+          exit $rc
 
       # 3) хост-тест: ELF/PLT/сигнатуры на reference/libblackrussia-client.so
       - name: Host test (x86_64)
+        id: h
         run: |
-          set -o pipefail
-          { set -x; make test; } 2>&1 | tee -a /tmp/ci.log
+          { set -x; make test; } > /tmp/stage.log 2>&1
+          rc=$?
+          cat /tmp/stage.log >> /tmp/ci.log
+          if [ $rc -ne 0 ]; then
+            msg=$({ grep -a "FAIL" /tmp/stage.log; tail -5 /tmp/stage.log; } | tail -4 | tr '\n' '|' | head -c 200)
+            echo "err=HOST|${msg}" >> "$GITHUB_OUTPUT"
+            echo "##[error] hosttest rc=$rc: ${msg}"
+            exit $rc
+          fi
           touch /tmp/ci_ok
 
       - name: Upload artifact
@@ -75,10 +96,8 @@ jobs:
           name: libmenu-br-arm64
           path: build/libmenu-br.so
 
-      # 4) диагностика:
-      #    успех -> лог в ветку ci-diagnostics
-      #    сбой  -> лог в issue "CI failure run <id>"
-      - name: Publish CI log
+      # диагностический степ: имя = первый найденный сбой (виден через API)
+      - name: "DIAG: ${{ (steps.b.outputs.err || steps.a.outputs.err || steps.h.outputs.err) || 'GREEN' }}"
         if: always()
         run: |
           set +e
@@ -88,9 +107,7 @@ jobs:
             cat /tmp/ci.log 2>/dev/null || echo "(no log captured)"
           } > /tmp/ci-log.txt
           head -c 60000 /tmp/ci-log.txt > /tmp/ci-issue.txt
-
           if [ -f /tmp/ci_ok ]; then
-            echo "CI green — публикуем лог в ветку"
             (
               cd /tmp
               rm -rf ciup && git init -q ciup && cd ciup
@@ -100,24 +117,21 @@ jobs:
               git -c user.email="ci@arena.bot" -c user.name="ci-log" \
                 commit -q -m "ci log run ${GITHUB_RUN_ID}"
               git push -qf origin HEAD:ci-diagnostics
-            ) && echo "log pushed" || echo "push ci-diagnostics failed (некритично)"
+            ) && echo "log pushed" || echo "push failed (read-only token?)"
             exit 0
           fi
-
-          echo "CI failed — создаём issue"
-          ./venv/bin/python - > /tmp/issue.json 2>/tmp/issue.json.err <<'PY'
+          ./venv/bin/python - > /tmp/issue.json 2>/dev/null <<'PY'
           import json, os
           print(json.dumps({
               "title": "CI failure run %s" % os.environ.get("GITHUB_RUN_ID", "?"),
               "body": open("/tmp/ci-issue.txt").read(),
           }))
           PY
-          cat /tmp/issue.json.err 2>/dev/null
           code=$(curl -s -o /tmp/resp.json -w "%{http_code}" -X POST \
             -H "Authorization: token ${GITHUB_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             -d @/tmp/issue.json \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues" || echo 000)
           echo "issue POST -> HTTP $code"
-          head -c 2000 /tmp/resp.json 2>/dev/null; echo
+          head -c 1500 /tmp/resp.json 2>/dev/null; echo
           exit 0
