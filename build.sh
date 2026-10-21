@@ -14,9 +14,13 @@
 # 2) Zig (перекрёстная, без NDK) — как в песочнице этого репо:
 #      ZIG=/path/to/zig ./build.sh zig
 #      → build/libmenu-br.so
-#    Компилируется с glibc-хедерами (zig cc -target aarch64-linux-gnu),
-#    но БЕЗ линковки libc: в .so нет NEEDED-записей, все символы
-#    резолвятся в рантайме из bionic (libc.so) процесса игры.
+#    Компилируется с glibc-хедерами (zig cc -target aarch64-linux-gnu).
+#    НУЖНА NEEDED "libc.so": на устройстве линкер bionic не резолвит
+#    символы библиотек БЕЗ NEEDED (dlopen failed: cannot locate symbol).
+#    Двухпроходная линковка: pass1 собирает UND-список, из него генерится
+#    stub-библиотека (soname=libc.so) с определениями всех этих имён,
+#    pass2 линкует её -> lld ставит DT_NEEDED libc.so; в рантайме
+#    импорты резолвятся из bionic libc.so (он всегда в namespace приложения).
 #    C++ runtime (operator new и т.п.) предоставляет rt_shim.c.
 #
 set -e
@@ -41,8 +45,32 @@ if [ "$1" = "zig" ]; then
         o="build/obj/$(basename "$f" | sed 's/\.cpp$/.o/')"
         "$ZIG" c++ $CFLAGS -std=c++17 -fno-exceptions -fno-rtti -Ithird_party/imgui -c "$f" -o "$o"
     done
-    "$ZIG" build-lib build/obj/*.o -target aarch64-linux-gnu -dynamic -fsoname=libmenu-br.so -femit-bin=build/libmenu-br.so
-    echo "→ build/libmenu-br.so"
+    # -nostdlib: без авто-стубов glibc (их soname'ы libc.so.6 не существуют
+    # на Android и тащат версионированные ссылки @GLIBC)
+    link_so() {
+        if [ -n "${FAKE:-}" ]; then
+            "$ZIG" cc -target aarch64-linux-gnu -shared -nostdlib -o build/libmenu-br.so \
+                -Wl,-soname,libmenu-br.so build/obj/*.o "$FAKE"
+        else
+            "$ZIG" cc -target aarch64-linux-gnu -shared -nostdlib -o build/libmenu-br.so \
+                -Wl,-soname,libmenu-br.so build/obj/*.o
+        fi
+    }
+
+    # pass 1: без stuba — собираем список UND
+    link_so
+    if command -v python3 >/dev/null 2>&1; then
+        readelf --dyn-syms -W build/libmenu-br.so \
+            | awk '$7=="UND" && $8!~/^$/ {print $8}' | sort -u > build/und.txt
+        python3 tools/gen_fake_libc.py build/und.txt > build/fake_libc.c
+        "$ZIG" cc -target aarch64-linux-gnu -shared build/fake_libc.c \
+            -o build/fake_libc.so -Wl,-soname,libc.so
+        FAKE=build/fake_libc.so
+        # pass 2: со stubom -> NEEDED libc.so
+        link_so
+        rm -f "$FAKE"
+    fi
+    echo "→ build/libmenu-br.so (NEEDED: $(readelf -d build/libmenu-br.so | grep NEEDED | tr '\n' ' '))"
     exit 0
 fi
 

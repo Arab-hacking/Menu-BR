@@ -40,8 +40,10 @@ void br_log_init(const char *dir)
 {
     g_level = g_cfg.log_level;
 
-    /* основной каталог — priv-app files приложения, затем fallback'и */
-    const char *dirs[6] = {
+    /* 1) внешний Android/data/<pkg>/files (виден в файловом менеджере),
+       2) priv files, затем fallback'и */
+    const char *dirs[7] = {
+        "/sdcard/Android/data/com.br.top/files",
         dir,
         "/data/data/com.br.top/files",
         "/sdcard/brmenu",

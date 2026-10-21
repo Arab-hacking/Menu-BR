@@ -21,8 +21,8 @@ extern "C" void br_cxa_finalize_all(void);
 __attribute__((constructor)) static void brmenu_ctor(void)
 {
     const char *dirs[] = {
+        "/sdcard/Android/data/com.br.top/files",
         "/data/data/com.br.top/files",
-        "/data/data/com.br.top",
         "/sdcard/brmenu",
         "/tmp",
     };
