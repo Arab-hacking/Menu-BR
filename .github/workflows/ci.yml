@@ -81,43 +81,43 @@ jobs:
       - name: Publish CI log
         if: always()
         run: |
+          set +e
           {
             echo "# CI log — run ${GITHUB_RUN_ID} — $(date -u +%FT%TZ)"
             echo ""
             cat /tmp/ci.log 2>/dev/null || echo "(no log captured)"
           } > /tmp/ci-log.txt
+          head -c 60000 /tmp/ci-log.txt > /tmp/ci-issue.txt
 
           if [ -f /tmp/ci_ok ]; then
-            # зелёный: публикуем лог в ветку
-            cd /tmp
-            rm -rf ciup && git init -q ciup && cd ciup
-            git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-            cp /tmp/ci-log.txt ci-log.txt
-            git add ci-log.txt
-            git -c user.email="ci@arena.bot" -c user.name="ci-log" \
-              commit -q -m "ci log run ${GITHUB_RUN_ID}"
-            git push -qf origin HEAD:ci-diagnostics || echo "push ci-diagnostics: нет прав (некритично)"
-            echo "CI green"
-          else
-            # красный: issue с логом (gh -> curl fallback)
-            echo "CI failed — публикуем issue"
-            head -c 60000 /tmp/ci-log.txt > /tmp/ci-issue.txt
-            if ! gh issue create \
-                --title "CI failure run ${GITHUB_RUN_ID}" \
-                --body-file /tmp/ci-issue.txt; then
-              echo "gh issue create не сработал — пробую curl"
-              ./venv/bin/python - <<'PY' > /tmp/issue.json
-              import json, os
-              print(json.dumps({
-                  "title": f"CI failure run {os.environ['GITHUB_RUN_ID']}",
-                  "body": open("/tmp/ci-issue.txt").read(),
-              }))
-              PY
-              curl -sS -X POST \
-                -H "Authorization: token ${GITHUB_TOKEN}" \
-                -H "Accept: application/vnd.github+json" \
-                -d @/tmp/issue.json \
-                "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues" \
-                || { echo "curl тоже не сработал, хвост лога:"; tail -c 8000 /tmp/ci-log.txt; }
-            fi
+            echo "CI green — публикуем лог в ветку"
+            (
+              cd /tmp
+              rm -rf ciup && git init -q ciup && cd ciup
+              git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+              cp /tmp/ci-log.txt ci-log.txt
+              git add ci-log.txt
+              git -c user.email="ci@arena.bot" -c user.name="ci-log" \
+                commit -q -m "ci log run ${GITHUB_RUN_ID}"
+              git push -qf origin HEAD:ci-diagnostics
+            ) && echo "log pushed" || echo "push ci-diagnostics failed (некритично)"
+            exit 0
           fi
+
+          echo "CI failed — создаём issue"
+          ./venv/bin/python - > /tmp/issue.json 2>/tmp/issue.json.err <<'PY'
+          import json, os
+          print(json.dumps({
+              "title": "CI failure run %s" % os.environ.get("GITHUB_RUN_ID", "?"),
+              "body": open("/tmp/ci-issue.txt").read(),
+          }))
+          PY
+          cat /tmp/issue.json.err 2>/dev/null
+          code=$(curl -s -o /tmp/resp.json -w "%{http_code}" -X POST \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -d @/tmp/issue.json \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues" || echo 000)
+          echo "issue POST -> HTTP $code"
+          head -c 2000 /tmp/resp.json 2>/dev/null; echo
+          exit 0
