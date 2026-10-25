@@ -120,6 +120,7 @@ const br_build_table_t BR_TABLES[] = {
         0x01A513B8,  /* rak_send_va */
         0x01A51AC8,  /* rak_rpc_va */
         0x036130D0,  /* obj_pool_glob (4096×8) */
+        0x03C0FAD8,  /* surface_wh_glob (g_SurfaceSizeWH) */
     },
 };
 

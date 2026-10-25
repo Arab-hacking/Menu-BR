@@ -30,7 +30,8 @@ typedef void  (*GLfn_iiv2f)(int, float, float);
 typedef void  (*GLfn_iip)(int, int, unsigned int *);
 typedef void  (*GLfn_iicp)(int, const unsigned int *);
 typedef void  (*GLfn_iui)(int, unsigned int);
-typedef void  (*GLfn_ilcv)(int, long, long, const void *);
+typedef void  (*GLfn_bufferdata)(int, long long, const void *, int);  /* glBufferData */
+typedef void  (*GLfn_buffersub)(int, long long, long long, const void *); /* glBufferSubData */
 typedef void  (*GLfn_iiiiiiii_c)(int, int, int, int, int, int, int, int, const void *);
 typedef void  (*GLfn_iiivv)(int, int, int, const void *);
 typedef void  (*GLfn_icp)(int, int *);
@@ -39,8 +40,18 @@ typedef int   (*GLfn_i_v)(void);
 typedef void  (*GLfn_uii_u)(unsigned int, int, unsigned int);
 typedef void  (*GLfn_u_iiiii_cv)(unsigned int, int, int, int, int, const void *);
 
+typedef const char *(*GLfn_gcps)(int);                /* glGetString */
+typedef void (*GLfn_iuiii_cf)(unsigned int, int, int, const float *); /* glUniformMatrix4fv */
+typedef int   (*GLfn_i_uc)(unsigned int, const char *); /* glGetAttribLocation */
+typedef void (*GLfn_iiuc)(unsigned int, int, void *, char *); /* glGet*InfoLog */
+typedef void (*GLfn_iboolv)(int, unsigned char *);    /* glGetBooleanv */
+typedef int   (*GLfn_i_b)(int);                        /* glIsEnabled */
+typedef int   (*GLfn_ui_b)(unsigned int);              /* glIsProgram */
+
 /* --- EGL --- */
 typedef void *(*EGLfn_getsurface)(int);
+typedef void *(*EGLfn_getdisplay)(void);
+typedef int   (*EGLfn_querysurf)(void *, void *, int, int *);
 
 /* --- Android input (libandroid.so) --- */
 typedef struct ANativeWindow ANativeWindow;
@@ -63,49 +74,69 @@ typedef int32_t     (*ANfn_kcode)(AInputEvent *);
 
 typedef struct {
     /* GL */
-    GLfn_ui_i    glCreateShader;
-    GLfn_ui      glDeleteShader;
-    GLfn_uivv    glShaderSource;
-    GLfn_ui      glCompileShader;
-    GLfn_i_u_i_i glGetShaderiv;
-    GLfn_ui_v    glCreateProgram;
-    GLfn_ui      glDeleteProgram;
-    GLfn_uu      glAttachShader;
-    GLfn_ui      glLinkProgram;
-    GLfn_i_u_i_i glGetProgramiv;
-    GLfn_i_ucs   glGetUniformLocation;
-    GLfn_ui      glUseProgram;
-    GLfn_ii      glUniform1i;
-    GLfn_iiv4f   glUniform4f;
-    GLfn_iiv2f   glUniform2f;
-    GLfn_ip      glGenBuffers;
-    GLfn_iicp    glDeleteBuffers;
-    GLfn_iui     glBindBuffer;
-    GLfn_ilcv    glBufferData;
-    GLfn_ilcv    glBufferSubData;
-    GLfn_ip      glGenVertexArrays;
-    GLfn_iicp    glDeleteVertexArrays;
-    GLfn_ui      glBindVertexArray;
-    GLfn_ip      glGenTextures;
-    GLfn_iicp    glDeleteTextures;
-    GLfn_iui     glBindTexture;
-    GLfn_iiiiiiii_c glTexImage2D;
-    GLfn_iii     glTexParameteri;
-    GLfn_ui      glEnableVertexAttribArray;
-    GLfn_u_iiiii_cv glVertexAttribPointer;
-    GLfn_iiiv    glDrawElements;
-    GLfn_iii     glDrawArrays;
-    GLfn_i       glClear;
-    GLfn_if      glClearDepthf;
-    GLfn_i       glDisable;
-    GLfn_i       glEnable;
-    GLfn_ii      glBlendFunc;
-    GLfn_i       glDepthMask;
-    GLfn_iiii    glViewport;
-    GLfn_iiii    glScissor;
-    GLfn_ii      glPixelStorei;
-    GLfn_i_v     glGetError;
-    GLfn_icp     glGetIntegerv;
+    GLfn_ui_i    glfCreateShader;
+    GLfn_ui      glfDeleteShader;
+    GLfn_uivv    glfShaderSource;
+    GLfn_ui      glfCompileShader;
+    GLfn_i_u_i_i glfGetShaderiv;
+    GLfn_ui_v    glfCreateProgram;
+    GLfn_ui      glfDeleteProgram;
+    GLfn_uu      glfAttachShader;
+    GLfn_ui      glfLinkProgram;
+    GLfn_i_u_i_i glfGetProgramiv;
+    GLfn_i_ucs   glfGetUniformLocation;
+    GLfn_ui      glfUseProgram;
+    GLfn_ii      glfUniform1i;
+    GLfn_iiv4f   glfUniform4f;
+    GLfn_iiv2f   glfUniform2f;
+    GLfn_ip      glfGenBuffers;
+    GLfn_iicp    glfDeleteBuffers;
+    GLfn_iui     glfBindBuffer;
+    GLfn_bufferdata glfBufferData;
+    GLfn_buffersub glfBufferSubData;
+    GLfn_ip      glfGenVertexArrays;
+    GLfn_iicp    glfDeleteVertexArrays;
+    GLfn_ui      glfBindVertexArray;
+    GLfn_ip      glfGenTextures;
+    GLfn_iicp    glfDeleteTextures;
+    GLfn_iui     glfBindTexture;
+    GLfn_iiiiiiii_c glfTexImage2D;
+    GLfn_iii     glfTexParameteri;
+    GLfn_ui      glfEnableVertexAttribArray;
+    GLfn_u_iiiii_cv glfVertexAttribPointer;
+    GLfn_iiiv    glfDrawElements;
+    GLfn_iii     glfDrawArrays;
+    GLfn_i       glfClear;
+    GLfn_if      glfClearDepthf;
+    GLfn_i       glfDisable;
+    GLfn_i       glfEnable;
+    GLfn_ii      glfBlendFunc;
+    GLfn_i       glfDepthMask;
+    GLfn_iiii    glfViewport;
+    GLfn_iiii    glfScissor;
+    GLfn_ii      glfPixelStorei;
+    GLfn_i_v     glfGetError;
+    GLfn_icp     glfGetIntegerv;
+    GLfn_gcps    glfGetString;
+    GLfn_iuiii_cf glfUniformMatrix4fv;
+    GLfn_uu      glfDetachShader;
+    GLfn_i_uc    glfGetAttribLocation;
+    GLfn_i       glfActiveTexture;
+    GLfn_iui     glfBindSampler;
+    GLfn_i_b     glfIsEnabled;
+    GLfn_ui_b    glfIsProgram;
+    GLfn_i       glfBlendEquation;
+    GLfn_iiii    glfBlendFuncSeparate;
+    GLfn_ii      glfBlendEquationSeparate;
+    GLfn_iiuc    glfGetShaderInfoLog;
+    GLfn_iiuc    glfGetProgramInfoLog;
+    GLfn_iboolv  glfGetBooleanv;
+    GLfn_iui     glfBindFramebuffer;
+    GLfn_iiii    glfColorMask;
+
+    /* EGL */
+    EGLfn_getdisplay eglGetCurrentDisplay;
+    EGLfn_querysurf  eglQuerySurface;
 
     /* EGL */
     EGLfn_getsurface eglGetCurrentSurface;
@@ -135,5 +166,8 @@ typedef struct {
 extern br_glapi_t g_gl;
 
 bool br_glapi_init(void);
+
+/* Адрес eglSwapBuffers в libEGL (для function-hook; 0 = нет). */
+void *br_glapi_eglswap_sym(void);
 
 #endif

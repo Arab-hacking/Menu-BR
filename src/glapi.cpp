@@ -9,9 +9,9 @@ br_glapi_t g_gl;
 
 static void *g_libgles = 0, *g_liblegl = 0, *g_libandroid = 0;
 
-#define GLSYM(name) do { \
-    g_gl.name = (decltype(g_gl.name))dlsym(g_libgles, #name); \
-    if (!g_gl.name) { LOGW("GL: нет " #name); } \
+#define GLSYM(m, n) do { \
+    g_gl.m = (decltype(g_gl.m))dlsym(g_libgles, #n); \
+    if (!g_gl.m) { LOGW("GL: нет " #n); } \
 } while (0)
 
 bool br_glapi_init(void)
@@ -24,51 +24,67 @@ bool br_glapi_init(void)
     }
     if (!g_libgles) { LOGE("libGLESv3/v2 не найдены"); return false; }
 
-    GLSYM(glCreateShader);
-    GLSYM(glDeleteShader);
-    GLSYM(glShaderSource);
-    GLSYM(glCompileShader);
-    GLSYM(glGetShaderiv);
-    GLSYM(glCreateProgram);
-    GLSYM(glDeleteProgram);
-    GLSYM(glAttachShader);
-    GLSYM(glLinkProgram);
-    GLSYM(glGetProgramiv);
-    GLSYM(glGetUniformLocation);
-    GLSYM(glUseProgram);
-    GLSYM(glUniform1i);
-    GLSYM(glUniform4f);
-    GLSYM(glUniform2f);
-    GLSYM(glGenBuffers);
-    GLSYM(glDeleteBuffers);
-    GLSYM(glBindBuffer);
-    GLSYM(glBufferData);
-    GLSYM(glBufferSubData);
-    GLSYM(glGenVertexArrays);
-    GLSYM(glDeleteVertexArrays);
-    GLSYM(glBindVertexArray);
-    GLSYM(glGenTextures);
-    GLSYM(glDeleteTextures);
-    GLSYM(glBindTexture);
-    GLSYM(glTexImage2D);
-    GLSYM(glTexParameteri);
-    GLSYM(glEnableVertexAttribArray);
-    GLSYM(glVertexAttribPointer);
-    GLSYM(glDrawElements);
-    GLSYM(glDrawArrays);
-    GLSYM(glClear);
-    GLSYM(glClearDepthf);
-    GLSYM(glDisable);
-    GLSYM(glEnable);
-    GLSYM(glBlendFunc);
-    GLSYM(glDepthMask);
-    GLSYM(glViewport);
-    GLSYM(glScissor);
-    GLSYM(glPixelStorei);
-    GLSYM(glGetError);
-    GLSYM(glGetIntegerv);
+    GLSYM(glfCreateShader, glCreateShader);
+    GLSYM(glfDeleteShader, glDeleteShader);
+    GLSYM(glfShaderSource, glShaderSource);
+    GLSYM(glfCompileShader, glCompileShader);
+    GLSYM(glfGetShaderiv, glGetShaderiv);
+    GLSYM(glfCreateProgram, glCreateProgram);
+    GLSYM(glfDeleteProgram, glDeleteProgram);
+    GLSYM(glfAttachShader, glAttachShader);
+    GLSYM(glfLinkProgram, glLinkProgram);
+    GLSYM(glfGetProgramiv, glGetProgramiv);
+    GLSYM(glfGetUniformLocation, glGetUniformLocation);
+    GLSYM(glfUseProgram, glUseProgram);
+    GLSYM(glfUniform1i, glUniform1i);
+    GLSYM(glfUniform4f, glUniform4f);
+    GLSYM(glfUniform2f, glUniform2f);
+    GLSYM(glfGenBuffers, glGenBuffers);
+    GLSYM(glfDeleteBuffers, glDeleteBuffers);
+    GLSYM(glfBindBuffer, glBindBuffer);
+    GLSYM(glfBufferData, glBufferData);
+    GLSYM(glfBufferSubData, glBufferSubData);
+    GLSYM(glfGenVertexArrays, glGenVertexArrays);
+    GLSYM(glfDeleteVertexArrays, glDeleteVertexArrays);
+    GLSYM(glfBindVertexArray, glBindVertexArray);
+    GLSYM(glfGenTextures, glGenTextures);
+    GLSYM(glfDeleteTextures, glDeleteTextures);
+    GLSYM(glfBindTexture, glBindTexture);
+    GLSYM(glfTexImage2D, glTexImage2D);
+    GLSYM(glfTexParameteri, glTexParameteri);
+    GLSYM(glfEnableVertexAttribArray, glEnableVertexAttribArray);
+    GLSYM(glfVertexAttribPointer, glVertexAttribPointer);
+    GLSYM(glfDrawElements, glDrawElements);
+    GLSYM(glfDrawArrays, glDrawArrays);
+    GLSYM(glfClear, glClear);
+    GLSYM(glfClearDepthf, glClearDepthf);
+    GLSYM(glfDisable, glDisable);
+    GLSYM(glfEnable, glEnable);
+    GLSYM(glfBlendFunc, glBlendFunc);
+    GLSYM(glfDepthMask, glDepthMask);
+    GLSYM(glfViewport, glViewport);
+    GLSYM(glfScissor, glScissor);
+    GLSYM(glfPixelStorei, glPixelStorei);
+    GLSYM(glfGetError, glGetError);
+    GLSYM(glfGetIntegerv, glGetIntegerv);
+    GLSYM(glfGetString, glGetString);
+    GLSYM(glfUniformMatrix4fv, glUniformMatrix4fv);
+    GLSYM(glfDetachShader, glDetachShader);
+    GLSYM(glfGetAttribLocation, glGetAttribLocation);
+    GLSYM(glfActiveTexture, glActiveTexture);
+    GLSYM(glfBindSampler, glBindSampler);
+    GLSYM(glfIsEnabled, glIsEnabled);
+    GLSYM(glfIsProgram, glIsProgram);
+    GLSYM(glfBlendEquation, glBlendEquation);
+    GLSYM(glfBlendFuncSeparate, glBlendFuncSeparate);
+    GLSYM(glfBlendEquationSeparate, glBlendEquationSeparate);
+    GLSYM(glfGetShaderInfoLog, glGetShaderInfoLog);
+    GLSYM(glfGetProgramInfoLog, glGetProgramInfoLog);
+    GLSYM(glfGetBooleanv, glGetBooleanv);
+    GLSYM(glfBindFramebuffer, glBindFramebuffer);
+    GLSYM(glfColorMask, glColorMask);
 
-    g_gl.gl_ok = g_gl.glDrawElements && g_gl.glCreateShader && g_gl.glGenBuffers;
+    g_gl.gl_ok = g_gl.glfDrawElements && g_gl.glfCreateShader && g_gl.glfGenBuffers;
     if (!g_gl.gl_ok) { LOGE("GL: критичные функции отсутствуют"); return false; }
 
     g_liblegl = dlopen("libEGL.so", RTLD_NOW | RTLD_NOLOAD);
@@ -76,6 +92,8 @@ bool br_glapi_init(void)
     if (g_liblegl) {
         g_gl.eglGetCurrentSurface = (decltype(g_gl.eglGetCurrentSurface))dlsym(g_liblegl, "eglGetCurrentSurface");
         g_gl.eglGetCurrentContext = (decltype(g_gl.eglGetCurrentContext))dlsym(g_liblegl, "eglGetCurrentContext");
+        g_gl.eglGetCurrentDisplay = (decltype(g_gl.eglGetCurrentDisplay))dlsym(g_liblegl, "eglGetCurrentDisplay");
+        g_gl.eglQuerySurface = (decltype(g_gl.eglQuerySurface))dlsym(g_liblegl, "eglQuerySurface");
         g_gl.egl_ok = g_gl.eglGetCurrentContext != 0;
     }
 
@@ -108,4 +126,14 @@ bool br_glapi_init(void)
     LOGI("glapi: gl=%d egl=%d android=%d window=%p",
          g_gl.gl_ok, g_gl.egl_ok, g_gl.android_ok, (void *)g_gl.window);
     return g_gl.gl_ok;
+}
+
+void *br_glapi_eglswap_sym(void)
+{
+    if (!g_liblegl)
+        g_liblegl = dlopen("libEGL.so", RTLD_NOW | RTLD_NOLOAD);
+    if (!g_liblegl)
+        g_liblegl = dlopen("libEGL.so", RTLD_NOW);
+    if (!g_liblegl) return 0;
+    return dlsym(g_liblegl, "eglSwapBuffers");
 }

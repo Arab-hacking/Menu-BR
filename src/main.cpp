@@ -68,9 +68,30 @@ static volatile int g_waiting  = 0;  /* отложенный init идёт */
 static volatile int g_shutdown = 0;
 static pthread_mutex_t g_init_mtx = PTHREAD_MUTEX_INITIALIZER;
 
-/* ---------- 16.111: хуки JNILib_step / multiTouchEvent ---------- */
+/* ---------- 16.111: хуки JNILib_step / multiTouchEvent / eglSwap ---------- */
 static void (*g_orig_step)(void *, void *) = 0;
 static void (*g_orig_touch)(void *, void *, int, int, int, int, int, int, int, int) = 0;
+static int (*g_orig_egl_swap)(void *, void *) = 0;
+
+/* capture-стейт-машина касаний (как в инспекторе: DOWN по окну → захват;
+ * MOVE — пока захват; UP/CANCEL — всегда в игру, чтобы не залипал джойстик) */
+static int   g_capturing_drag = 0;
+static int   g_touch_cnt_prev = 0;
+static float g_touch_cy_prev  = 0;
+
+static int touch_in_ui(float x, float y)
+{
+    return br_ui_menu_hit(x, y);
+}
+
+/* 16.111: рендер в eglSwapBuffers (libEGL) — второй, гарантированный
+ * рендер-триггер сразу перед презентацией (как в инспекторе: оба хука
+ * активны, re-entrancy guard в br_frame_render_ui защищает от вложенности) */
+static int egl_swap_hook(void *dpy, void *surf)
+{
+    br_frame_render_ui();
+    return g_orig_egl_swap ? g_orig_egl_swap(dpy, surf) : 0;
+}
 
 static void jni_step_hook(void *env, void *thiz)
 {
@@ -78,17 +99,20 @@ static void jni_step_hook(void *env, void *thiz)
     br_frame_render_ui();
 }
 
-static int   g_touch_cnt_prev = 0;
-static float g_touch_cy_prev  = 0;
-
 static void jni_touch_hook(void *env, void *thiz, int action, int count,
                            int x1, int y1, int x2, int y2, int x3, int y3)
 {
     (void)env; (void)thiz;
     int a = action & 0xFF;
-    if (a == 0 || a == 5)       br_input_feed(IN_MOUSE_DOWN, (float)x1, (float)y1);
-    else if (a == 2 || a == 7)  br_input_feed(IN_MOUSE_MOVE, (float)x1, (float)y1);
-    else if (a == 1 || a == 6 || a == 3) br_input_feed(IN_MOUSE_UP, (float)x1, (float)y1);
+    int norm = 2;
+    if (a == 0 || a == 5)          norm = 0; /* DOWN */
+    else if (a == 1 || a == 6)     norm = 1; /* UP */
+    else if (a == 2 || a == 7)     norm = 2; /* MOVE */
+    else if (a == 3)               norm = 3; /* CANCEL */
+
+    if (norm == 0)       br_input_feed(IN_MOUSE_DOWN, (float)x1, (float)y1);
+    else if (norm == 2)  br_input_feed(IN_MOUSE_MOVE, (float)x1, (float)y1);
+    else if (norm == 1 || norm == 3) br_input_feed(IN_MOUSE_UP, (float)x1, (float)y1);
 
     /* два пальца = колесо (вертикальный сдвиг центроида, как в AInputQueue) */
     if (count >= 2) {
@@ -101,12 +125,23 @@ static void jni_touch_hook(void *env, void *thiz, int action, int count,
         g_touch_cnt_prev = 0;
     }
 
-    /* блокируем прокликивание игры сквозь окно меню (DOWN/MOVE внутри окна) */
-    if (g_orig_touch) {
-        bool inside = br_ui_menu_hit((float)x1, (float)y1);
-        if (!(inside && (a == 0 || a == 2)))
-            g_orig_touch(env, thiz, action, count, x1, y1, x2, y2, x3, y3);
+    /* capture-стейт-машина (принцип инспектора):
+     * DOWN по окну UI → захват; MOVE — пока захват или по окну;
+     * UP/CANCEL — сброс захвата и ВСЕГДА в игру (не залипать джойстику) */
+    int inside = touch_in_ui((float)x1, (float)y1);
+    int pass = 1;
+    if (norm == 0) {
+        g_capturing_drag = inside;
+        pass = inside ? 0 : 1;
+    } else if (norm == 2) {
+        pass = (g_capturing_drag || inside) ? 0 : 1;
+    } else {
+        g_capturing_drag = 0;
+        pass = 1;
     }
+
+    if (g_orig_touch && pass)
+        g_orig_touch(env, thiz, action, count, x1, y1, x2, y2, x3, y3);
 }
 
 /* GL + хуки + треды + UI. Предусловие: br_detect_init() == BRMENU_OK. */
@@ -138,6 +173,23 @@ static int init_after_detect(void)
                 hooked++;
             } else {
                 LOGE("16.111: хук multiTouchEvent не установлен");
+            }
+        }
+        /* второй рендер-триггер (как в инспекторе): eglSwapBuffers —
+         * гарантирует, что UI дорисован сразу перед презентацией, даже
+         * если игра швепает внутри JNILib_step */
+        {
+            void *sw = br_glapi_eglswap_sym();
+            if (sw) {
+                void *o = 0;
+                if (br_fhook_install(sw, (void *)egl_swap_hook, &o) == 0) {
+                    g_orig_egl_swap = (int (*)(void *, void *))o;
+                    LOGI("16.111: хук eglSwapBuffers установлен");
+                } else {
+                    LOGW("16.111: eglSwapBuffers-хук не встал (пролог)");
+                }
+            } else {
+                LOGW("16.111: eglSwapBuffers не найден (libEGL)");
             }
         }
         if (tbl->rak_send_va || tbl->rak_rpc_va) {
@@ -317,6 +369,7 @@ extern "C" int MenuBR_Shutdown(void)
     if (g_hook_glClear.installed) br_hook_remove(&g_hook_glClear);
     if (g_hook_glDrawArrays.installed) br_hook_remove(&g_hook_glDrawArrays);
     br_uigl_shutdown();
+    br_ui_ctx_destroy();
     br_feat_shutdown();
     br_cfg_save();
     br_cxa_finalize_all();

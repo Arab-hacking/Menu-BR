@@ -76,6 +76,7 @@ typedef struct {
     uintptr_t rak_send_va;       /* Send(BitStream*,prio,rel,chan) thunk */
     uintptr_t rak_rpc_va;        /* RPC(id,BitStream*,prio,rel,chan) thunk */
     uintptr_t obj_pool_glob;     /* ObjectPool (4096 × 8B) для ESP */
+    uintptr_t surface_wh_glob;   /* int32[2] {w,h} поверхности (0 = нет) */
 } br_build_table_t;
 
 extern const br_build_table_t BR_TABLES[]; /* индекс = br_build (1,2) */

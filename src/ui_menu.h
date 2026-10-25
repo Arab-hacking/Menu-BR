@@ -7,6 +7,7 @@
 #include <stdbool.h>
 
 void br_ui_init(void);          /* создать ImGui-контекст (без GL) */
+void br_ui_ctx_destroy(void);   /* уничтожить ImGui-контекст (shutdown) */
 void br_frame_render_ui(void);  /* полный UI-кадр (только GL-тред) */
 
 /* Хит-тест: точка внутри открытого окна меню (для swallow кликов, 16.111) */

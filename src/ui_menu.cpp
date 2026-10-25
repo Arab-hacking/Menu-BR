@@ -14,7 +14,9 @@
 #include "ui_menu.h"
 #include "ui_esp.h"
 #include "netmon.h"
+#include <sys/stat.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 /* ---------------- состояние UI ---------------- */
 static bool   g_ctx_ready  = false;
@@ -23,14 +25,17 @@ static bool   g_menu_open  = true;
 static bool   g_radar_open = true;
 static double g_last_frame_ms = 0;
 
-/* хит-рект (для swallow кликов, 16.111) */
-static ImVec2 g_menu_rmin, g_menu_rmax;
-static ImVec2 g_pill_rmin, g_pill_rmax;
+/* собственный изолированный ImGui-контекст (принцип инспектора 16.111:
+ * без зависимости от встроенного в игру GImGui) */
+static ImGuiContext *g_own_ctx = 0;
+static void         *g_last_egl_ctx = 0;
+static int           g_in_frame = 0;   /* re-entrancy guard */
 
-/* drag pill */
-static bool   g_pill_down  = false;
-static ImVec2 g_pill_start;
-static bool   g_pill_moved = false;
+/* хит-рект (для swallow кликов, 16.111) — копируем после каждого кадра
+ * из списка активных окон ImGui (как в инспекторе) */
+#define UI_RECT_MAX 12
+static float  g_win_rects[UI_RECT_MAX][4];
+static int    g_win_rect_cnt = 0;
 
 /* ---------------- input -> imgui ---------------- */
 static void consume_input(void)
@@ -40,6 +45,7 @@ static void consume_input(void)
     for (;;) {
         int n = br_input_drain(evs, 128);
         if (n <= 0) break;
+        io->AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
         for (int i = 0; i < n; i++) {
             br_in_ev_t *e = &evs[i];
             switch (e->type) {
@@ -126,6 +132,13 @@ static void apply_theme(void)
 }
 
 /* ---------------- шрифт (системный, кириллица) ---------------- */
+static bool font_readable(const char *p)
+{
+    struct stat st;
+    return stat(p, &st) == 0 && st.st_size > 1024;
+}
+
+/* шрифты как в инспекторе 16.111: системный TTF, кириллица, oversample */
 static void load_fonts(float size)
 {
     ImGuiIO *io = &ImGui::GetIO();
@@ -138,15 +151,19 @@ static void load_fonts(float size)
     };
     ImFont *f = 0;
     ImFontConfig cfg;
+    cfg.OversampleH = 2;
+    cfg.OversampleV = 1;
+    cfg.PixelSnapH  = true;
     for (int i = 0; i < 4 && !f; i++) {
-        f = io->Fonts->AddFontFromFileTTF(paths[i], size, &cfg,
-                                          io->Fonts->GetGlyphRangesCyrillic());
+        if (font_readable(paths[i]))
+            f = io->Fonts->AddFontFromFileTTF(paths[i], size, &cfg,
+                                              io->Fonts->GetGlyphRangesCyrillic());
     }
     if (!f) {
         f = io->Fonts->AddFontDefault();
-        LOGI("ui: системный шрифт не найден, default (без кириллицы)");
+        LOGW("ui: системный TTF не найден, default (без кириллицы)");
     } else {
-        LOGI("ui: шрифт %s %.0fpx", paths[0], size);
+        LOGI("ui: шрифт %s %.1fpx", paths[0], size);
     }
     io->FontDefault = f;
 }
@@ -155,16 +172,36 @@ static void br_ui_init_ex(int w, int h)
 {
     if (g_ctx_ready) return;
     IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
+
+    /* собственный контекст (изолирован от встроенного imgui игры) */
+    g_own_ctx = ImGui::CreateContext();
+    ImGui::SetCurrentContext(g_own_ctx);
     ImGuiIO *io = &ImGui::GetIO();
-    io->IniFilename = NULL; /* не пишем imgui.ini в процесс игры */
+    io->IniFilename = NULL;          /* не пишем imgui.ini в процесс игры */
+    io->LogFilename = NULL;
+    io->ConfigInputTrickleEventQueue = true;
     io->DisplaySize = ImVec2((float)w, (float)h);
-    float fs = (float)h / 45.0f;
-    if (fs < 14.0f) fs = 14.0f;
+
+    /* размер шрифта как в инспекторе: clamp(short_side/38, 18, 28) */
+    int short_side = w < h ? w : h;
+    if (short_side < 480) short_side = 480;
+    float fs = (float)short_side / 38.0f;
+    if (fs < 18.0f) fs = 18.0f;
     if (fs > 28.0f) fs = 28.0f;
     load_fonts(fs);
     apply_theme();
     g_ctx_ready = true;
+    LOGI("ui: собственный ImGui-контекст готов (%p)", (void *)g_own_ctx);
+}
+
+void br_ui_ctx_destroy(void)
+{
+    if (g_own_ctx) {
+        ImGui::SetCurrentContext(g_own_ctx);
+        ImGui::DestroyContext();
+        g_own_ctx = 0;
+    }
+    g_ctx_ready = false;
 }
 
 void br_ui_init(void)
@@ -181,10 +218,6 @@ static void draw_pill(int w, int h, float s)
                              ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing;
     if (!ImGui::Begin("##BRPill", 0, flags)) { ImGui::End(); return; }
 
-    g_pill_rmin = ImGui::GetWindowPos();
-    g_pill_rmax = ImVec2(g_pill_rmin.x + ImGui::GetWindowWidth(),
-                         g_pill_rmin.y + ImGui::GetWindowHeight());
-
     const ImVec4 accent = g_menu_open ? ImVec4(0.22f, 0.84f, 0.96f, 1.0f)
                                       : ImVec4(0.65f, 0.75f, 0.85f, 1.0f);
     ImGui::TextColored(accent, "BR %s", br_build_name(g_st.build));
@@ -198,30 +231,6 @@ static void draw_pill(int w, int h, float s)
     ImGui::SameLine();
     ImGui::TextDisabled("| %.0f FPS | П:%d М:%d",
                         ImGui::GetIO().Framerate, g_st.players_online, g_st.vehicles_count);
-
-    /* drag */
-    ImGuiIO *io = &ImGui::GetIO();
-    ImVec2 m(io->MousePos.x, io->MousePos.y);
-    bool over = m.x >= g_pill_rmin.x && m.x <= g_pill_rmax.x &&
-                m.y >= g_pill_rmin.y && m.y <= g_pill_rmax.y;
-    if (io->MouseClicked[0] && over) {
-        g_pill_down = true; g_pill_start = m; g_pill_moved = false;
-    }
-    if (io->MouseDown[0] && g_pill_down) {
-        ImVec2 d(m.x - g_pill_start.x, m.y - g_pill_start.y);
-        if (d.x*d.x + d.y*d.y > 64) g_pill_moved = true;
-        if (g_pill_moved) {
-            float nx = (m.x - 20.0f) / w;
-            float ny = (m.y - 12.0f) / h;
-            if (nx < 0.01f) nx = 0.01f; if (nx > 0.95f) nx = 0.95f;
-            if (ny < 0.01f) ny = 0.01f; if (ny > 0.95f) ny = 0.95f;
-            g_cfg.btn_x = nx; g_cfg.btn_y = ny;
-        }
-    }
-    if (!io->MouseDown[0] && g_pill_down) {
-        g_pill_down = false;
-        if (!g_pill_moved) g_menu_open = !g_menu_open;
-    }
     ImGui::End();
 }
 
@@ -799,8 +808,6 @@ static void tab_log(void)
 /* ---------------- главное окно ---------------- */
 static void draw_menu(int w, int h, float s)
 {
-    g_menu_rmin = g_menu_rmax = ImVec2(0, 0); /* до Begin */
-
     float def_w = 980.0f * s;
     float aw = w * 0.88f; if (aw < 540.0f) aw = 540.0f;
     if (def_w > aw) def_w = aw;
@@ -815,10 +822,6 @@ static void draw_menu(int w, int h, float s)
         ImGui::End();
         return;
     }
-    g_menu_rmin = ImGui::GetWindowPos();
-    g_menu_rmax = ImVec2(g_menu_rmin.x + ImGui::GetWindowWidth(),
-                         g_menu_rmin.y + ImGui::GetWindowHeight());
-
     if (ImGui::BeginTabBar("##main", ImGuiTabBarFlags_None)) {
         if (ImGui::BeginTabItem("Свой"))     { tab_self();     ImGui::EndTabItem(); }
         if (ImGui::BeginTabItem("Машины"))   { tab_vehicles(); ImGui::EndTabItem(); }
@@ -849,40 +852,65 @@ static void draw_radar(float s)
     ImGui::End();
 }
 
-/* ---------------- кадр ---------------- */
+/* ---------------- кадр (принцип инспектора 16.111) ---------------- */
 void br_frame_render_ui(void)
 {
-    if (!g_gl.gl_ok) return;
-    if (g_gl.eglGetCurrentContext && !g_gl.eglGetCurrentContext())
-        return; /* не в GL-контексте */
+    if (g_in_frame) return;           /* re-entrancy guard */
+    g_in_frame = 1;
 
-    double now = br_now_ms();
-    double dt = g_last_frame_ms ? (now - g_last_frame_ms) : 16.0;
-    g_last_frame_ms = now;
+    if (!g_gl.gl_ok) { g_in_frame = 0; return; }
 
-    int vp[4] = {0, 0, 1280, 720};
-    if (g_gl.glGetIntegerv) g_gl.glGetIntegerv(0x0BA2, vp);
-    int w = vp[2] > 0 ? vp[2] : 1280;
-    int h = vp[3] > 0 ? vp[3] : 720;
-    float s = ui_scale_now(h);
+    void *cur_ctx = br_uigl_current_egl_context();
+    if (!cur_ctx) {
+        static int noctx = 0;
+        if (++noctx == 1) LOGW("ui: нет текущего EGL-контекста (оверлей ждёт GLThread)");
+        g_in_frame = 0;
+        return;
+    }
+
+    /* размер поверхности: eglQuerySurface → BSS-глобал → viewport */
+    int w = 0, h = 0;
+    uintptr_t wh_va = (g_det.tbl && g_det.tbl->surface_wh_glob)
+        ? (g_det.base + g_det.tbl->surface_wh_glob) : 0;
+    if (!br_uigl_surface_size(&w, &h, wh_va)) { w = 1280; h = 720; }
+    if (w <= 64 || h <= 64) { g_in_frame = 0; return; }
+
+    /* смена EGL-контекста (ротация, пауза/resume) — пересоздаём GLES-ресурсы */
+    if (g_uigl_ready && cur_ctx != g_last_egl_ctx) {
+        LOGI("ui: смена EGLContext (%p -> %p) — ресоз GL-ресурсов",
+             g_last_egl_ctx, cur_ctx);
+        br_uigl_shutdown();
+        g_uigl_ready = 0;
+    }
 
     if (!g_ctx_ready) br_ui_init_ex(w, h);
     if (!g_uigl_ready) {
         if (br_uigl_init(w, h)) {
             g_uigl_ready = true;
+            g_last_egl_ctx = cur_ctx;
             LOGI("ui: GL-бэкенд готов %dx%d (первый кадр)", w, h);
         } else {
             static int ui_init_fail = 0;
             if (++ui_init_fail <= 3) LOGE("ui: br_uigl_init не удался (попытка %d)", ui_init_fail);
+            g_in_frame = 0;
             return;
         }
     }
 
+    double now = br_now_ms();
+    double dt = g_last_frame_ms ? (now - g_last_frame_ms) : 16.0;
+    g_last_frame_ms = now;
+    float s = ui_scale_now(h);
+
     consume_input();
 
-    ImGui::GetIO().DisplaySize = ImVec2((float)w, (float)h);
+    ImGuiIO *io = &ImGui::GetIO();
+    io->DisplaySize = ImVec2((float)w, (float)h);
+    io->DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
     ImGui::GetStyle().ScaleAllSizes(s);
     ImGui::GetStyle().Alpha = g_cfg.ui_opacity;
+
+    br_uigl_new_frame();   /* DO перед ImGui::NewFrame() */
     ImGui::NewFrame();
 
     /* фоновые задачи на GL-треде */
@@ -894,24 +922,39 @@ void br_frame_render_ui(void)
     if (g_menu_open) draw_menu(w, h, s);
     draw_radar(s);
 
-    ImGui::Render();
+    /* хит-рект активных окон (для swallow кликов) */
+    {
+        ImGuiContext *ctx = ImGui::GetCurrentContext();
+        g_win_rect_cnt = 0;
+        for (int i = 0; ctx && i < ctx->Windows.Size && g_win_rect_cnt < UI_RECT_MAX; i++) {
+            ImGuiWindow *wnd = ctx->Windows[i];
+            if (!wnd || !wnd->WasActive || wnd->Hidden) continue;
+            if (wnd->Flags & ImGuiWindowFlags_NoInputs) continue;
+            g_win_rects[g_win_rect_cnt][0] = wnd->Pos.x;
+            g_win_rects[g_win_rect_cnt][1] = wnd->Pos.y;
+            g_win_rects[g_win_rect_cnt][2] = wnd->Pos.x + wnd->Size.x;
+            g_win_rects[g_win_rect_cnt][3] = wnd->Pos.y + wnd->Size.y;
+            g_win_rect_cnt++;
+        }
+    }
+
     br_uigl_render(w, h);
+    g_in_frame = 0;
 
     static int frame_n = 0;
-    if (++frame_n == 1) LOGI("ui: кадр 1 отрисован");
+    if (++frame_n == 1) LOGI("ui: кадр 1 отрисован (%dx%d)", w, h);
     else if (frame_n % 300 == 0) LOGI("ui: кадров всего %d", frame_n);
 }
 
 /* ---------------- API для хука ввода (16.111) ---------------- */
 bool br_ui_menu_hit(float x, float y)
 {
-    if (!g_ctx_ready) return false;
-    if (g_menu_open &&
-        x >= g_menu_rmin.x && x <= g_menu_rmax.x &&
-        y >= g_menu_rmin.y && y <= g_menu_rmax.y)
-        return true;
-    return x >= g_pill_rmin.x && x <= g_pill_rmax.x &&
-           y >= g_pill_rmin.y && y <= g_pill_rmax.y;
+    for (int i = 0; i < g_win_rect_cnt; i++) {
+        if (x >= g_win_rects[i][0] && x <= g_win_rects[i][2] &&
+            y >= g_win_rects[i][1] && y <= g_win_rects[i][3])
+            return true;
+    }
+    return false;
 }
 
 void br_ui_get_btn(float *out_x, float *out_y)
