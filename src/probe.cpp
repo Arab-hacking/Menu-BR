@@ -249,3 +249,93 @@ int br_find_player_ped_off(uintptr_t player_obj, uint16_t veh_id)
     }
     return best;
 }
+
+/* ================= 16.111 =================
+ * Модель: CPlayerPool { +0: CLocalPlayer*; +0x08: CRemotePlayer*[1504] }
+ * CLocalPlayer: u16 ID +0x00, ник +0x02, CPed* +0x38, CVehicle* +0x40
+ * CRemotePlayer: CPed* +0x10, ник +0x18, u16 ID +0x4A (sizeof 0x288)
+ * CPed: pos f32[3] +0x38, HP +0x4B0, Armor +0x4B8, CVehicle* +0x540, flag +0x548
+ * VehiclePool: 2000 × CNetVehicle* { +0: CVehicle* }
+ * CVehicle: pos +0x38, vel f32[3] +0x180, backref +0xB8, класс +0x430, netID +0x434
+ */
+
+bool br_validate_local16111(uintptr_t player_pool_glob, uintptr_t *local_obj_out)
+{
+    uint64_t local = 0;
+    if (!br_safe_read(player_pool_glob, &local, 8)) return false;
+    if (local == 0 || local < 0x10000) return false;
+
+    uint16_t id = 0;
+    if (!br_safe_read(local + 0x00, &id, 2)) return false;
+    if (id > 1503) return false;
+
+    uint64_t ped = 0;
+    if (!br_safe_read(local + 0x38, &ped, 8)) return false;
+    if (ped == 0 || ped < 0x10000) return false;
+
+    float pos[3];
+    if (!br_readf(ped + 0x38, pos, 3)) return false;
+    for (int k = 0; k < 3; k++)
+        if (!isfinite(pos[k]) || fabsf(pos[k]) > 1e6f) return false;
+
+    if (local_obj_out) *local_obj_out = local;
+    return true;
+}
+
+/* общий хелпер: CVehicle* из слота пула v2 */
+static uint64_t v2_vehicle_from_slot(uintptr_t table, int i)
+{
+    uint64_t nv = 0;
+    if (!br_safe_read(table + (uintptr_t)i * 8, &nv, 8)) return 0;
+    if (nv == 0) return 0;
+    uint64_t gv = 0;
+    if (!br_safe_read(nv, &gv, 8)) return 0;
+    return gv;
+}
+
+static bool v2_vehicle_valid(uint64_t gv, uint16_t *id_out, uint32_t *cls_out)
+{
+    if (gv == 0) return false;
+    uint16_t id = 0;
+    if (!br_safe_read(gv + 0x434, &id, 2)) return false;
+    if (id >= BR_MAX_VEHICLES) return false;
+    uint32_t cls = 0xFFFFFFFF;
+    br_safe_read(gv + 0x430, &cls, 4);
+    if (cls > 12) return false;
+    float pos[3];
+    if (!br_readf(gv + 0x38, pos, 3)) return false;
+    for (int k = 0; k < 3; k++)
+        if (!isfinite(pos[k]) || fabsf(pos[k]) > 1e6f) return false;
+    if (id_out) *id_out = id;
+    if (cls_out) *cls_out = cls;
+    return true;
+}
+
+bool br_pool_plausible_v2(uintptr_t pool_glob, uintptr_t *table_out)
+{
+    uint64_t tbl = 0;
+    if (!br_safe_read(pool_glob, &tbl, 8)) return false;
+    if (tbl == 0) return false;
+
+    static const int sample[] = { 0, 1, 2, 128, 512, 1024, 1536, 1999 };
+    for (int s = 0; s < (int)(sizeof(sample) / sizeof(sample[0])); s++) {
+        uint64_t gv = v2_vehicle_from_slot(tbl, sample[s]);
+        if (gv == 0) continue; /* пустой слот — ок */
+        if (!v2_vehicle_valid(gv, 0, 0)) return false;
+    }
+    if (table_out) *table_out = tbl;
+    return true;
+}
+
+int br_pool_valid_v2(uintptr_t pool_glob)
+{
+    uint64_t tbl = 0;
+    if (!br_safe_read(pool_glob, &tbl, 8)) return 0;
+    if (tbl == 0) return 0;
+    int valid = 0;
+    for (int i = 0; i < BR_MAX_VEHICLES; i++) {
+        uint64_t gv = v2_vehicle_from_slot(tbl, i);
+        if (gv && v2_vehicle_valid(gv, 0, 0)) valid++;
+    }
+    return valid;
+}

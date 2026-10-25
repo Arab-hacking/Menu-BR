@@ -9,19 +9,22 @@
 
 typedef struct {
     uint16_t id;
-    float    pos[3];      /* из таблицы педов (+0x38/0x3C/0x40) */
-    float    speed;       /* м/с, EMA по дельте позиции */
-    uint8_t  state;       /* +0x118: 19 = в машине */
-    uint16_t veh_id;      /* +0x150 */
+    float    pos[3];      /* CPed +0x38/0x3C/0x40 */
+    float    speed;       /* м/с, EMA по дельте позиции (или |vel| машины, 16.111) */
+    uint8_t  state;       /* 16.110: +0x118 (19 = в машине); 16.111: флаг в авто */
+    uint16_t veh_id;      /* 16.110: +0x150; 16.111: CVehicle+0x434 */
     int      veh_class;   /* класс машины (через veh ptr), -1 = нет */
     uint8_t  online;      /* слот занят */
+    char     name[48];    /* ник (16.111: local +0x02 / remote +0x18) */
+    float    hp;          /* 16.111: CPed+0x4B0 (-1 = неизвестно) */
+    float    armor;       /* 16.111: CPed+0x4B8 */
 } br_player_t;
 
 typedef struct {
     uint16_t net_id;
     int      veh_class;   /* CVehicle+0x430 */
-    float    pos[3];      /* позиция пассажира-водителя (прокси) */
-    float    speed;       /* м/с */
+    float    pos[3];      /* 16.111: CVehicle+0x38; иначе позиция водителя (прокси) */
+    float    speed;       /* м/с (16.111: |CVehicle+0x180|) */
     uint16_t occupant_id; /* 0 = никто (не определён) */
     uint8_t  valid;
 } br_vehicle_t;
@@ -33,8 +36,12 @@ typedef struct {
     uintptr_t ped_table;    /* CPed[]: шаг 0xF8 */
     uintptr_t color_table;  /* 16B/игрок */
 
-    int      player_veh_off;  /* смещение CVehicle* в RemotePlayer */
+    int      player_veh_off;  /* смещение CVehicle* (16.110: в объекте; 16.111: в ПЕДЕ) */
     int      player_ped_off;  /* смещение CPed* в RemotePlayer (0 = таблица педов) */
+    int      player_ped_off_local;  /* 16.111: CPed* в CLocalPlayer (0 = объект = пед) */
+    int      player_ped_off_remote; /* 16.111: CPed* в CRemotePlayer */
+    int      pool_v2;         /* 16.111: пул = CNetVehicle* (индирекция через +0) */
+    uintptr_t local_obj;      /* 16.111: объект CLocalPlayer (mgr+0); иначе 0 */
     int      build;           /* br_build */
     bool     addr_ok;         /* минимум пул+менеджер валидны */
 

@@ -18,6 +18,8 @@ typedef enum {
     FEAT_SPAWN,          /* args: int model_id */
     FEAT_ENTER_SPAWNED,  /* args: - */
     FEAT_SET_COLOR,      /* args: float rgb[3] */
+    FEAT_HEAL,           /* args (опц): float2 {hp, armor}; 16.111 */
+    FEAT_ENTER_NETID,    /* args: int net_id; 16.111 */
     FEAT_RESCAN,         /* args: - */
     FEAT_COUNT
 } br_feat_cmd_t;

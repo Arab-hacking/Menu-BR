@@ -26,7 +26,8 @@ enum br_build {
     BR_BUILD_AUTO   = 0,
     BR_BUILD_16106  = 1,
     BR_BUILD_16110  = 2,
-    BR_BUILD_CUSTOM = 3, /* ручные адреса */
+    BR_BUILD_16111  = 3,
+    BR_BUILD_CUSTOM = 4, /* ручные адреса */
 };
 
 typedef struct {
@@ -65,6 +66,16 @@ typedef struct {
     uint8_t sig_getby_mask[8];
     uint8_t sig_disp[36];
     uint8_t sig_disp_mask[36];
+
+    /* ---- 16.111: новое (хвост структуры, старые таблицы = 0) ---- */
+    int  player_ped_off_local;   /* CPed* в CLocalPlayer (0 = объект и есть пед) */
+    int  player_ped_off_remote;  /* CPed* в CRemotePlayer (0 = объект и есть пед) */
+    uintptr_t rak_client_glob;   /* RakClientInterface* (0 = неизвестен) */
+    uintptr_t jni_step_va;       /* JNILib_step — кадр GLThread (рендер-хук) */
+    uintptr_t jni_touch_va;      /* JNILib_multiTouchEvent — хук касаний */
+    uintptr_t rak_send_va;       /* Send(BitStream*,prio,rel,chan) thunk */
+    uintptr_t rak_rpc_va;        /* RPC(id,BitStream*,prio,rel,chan) thunk */
+    uintptr_t obj_pool_glob;     /* ObjectPool (4096 × 8B) для ESP */
 } br_build_table_t;
 
 extern const br_build_table_t BR_TABLES[]; /* индекс = br_build (1,2) */
@@ -76,6 +87,7 @@ static const char *br_build_name(int b)
     switch (b) {
     case BR_BUILD_16106: return "16.106.17587";
     case BR_BUILD_16110: return "16.110.18323";
+    case BR_BUILD_16111: return "16.111.19050";
     case BR_BUILD_CUSTOM:return "Custom";
     default:             return "Auto";
     }

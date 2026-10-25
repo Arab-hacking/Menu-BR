@@ -73,6 +73,54 @@ const br_build_table_t BR_TABLES[] = {
           0xff,0xff,0xff,0xff, 0xff,0xff,0xff,0xff,
           0xff,0xff,0xff,0xff },
     },
+
+    /* [3] 16.111.19050 — карта офсетов, подтверждённая рабочим модулем
+     * на устройстве (br_imgui_inspector) + статический анализ:
+     *   build-id 2b301eb3b52fe709056c59e22e214775027674dd (VA 0x2E0),
+     *   глобалы .bss 0x036130A0..0x03613108 (GOT-ссылки из 0x0E77FA0..),
+     *   PlayerPool: local +0x00, remote +0x08+id*8 (1504),
+     *   CLocalPlayer: ID +0x00, ник +0x02, CPed* +0x38, CVehicle* +0x40,
+     *   CRemotePlayer: CPed* +0x10, ник +0x18, ID +0x4A (sizeof 0x288),
+     *   CPed: pos +0x38..40, HP +0x4B0, Armor +0x4B8, CVehicle* +0x540,
+     *         флаг в авто +0x548,
+     *   CVehicle: pos +0x38..40, vel +0x180 (float[3]), backref +0xB8,
+     *         класс +0x430, netID +0x434,
+     *   RakClient: g_pRakClient 0x036130A0, vtable 0x02140BF0,
+     *         Send thunk 0x01A513B8 (slot +0x38), RPC thunk 0x01A51AC8 (+0xB0),
+     *   JNI: JNILib_step 0x01901D44, JNILib_multiTouchEvent 0x01902270.
+     * Бинарника в песочнице нет — сигнатуры нулевые, детект по build-id
+     * + структурным провам пулов. */
+    {
+        "16.111.19050",
+        { 0x2b,0x30,0x1e,0xb3,0xb5,0x2f,0xe7,0x09,0x05,0x6c,
+          0x59,0xe2,0x2e,0x21,0x47,0x75,0x02,0x76,0x74,0xdd },
+        /* глобалы */
+        0x036130B8,  /* pool_glob (VehiclePool* 2000×8) */
+        0x036130B0,  /* player_mgr_glob (CPlayerPool*) */
+        0,           /* ped_table_glob — глобальной таблицы нет, пед через объект */
+        0,           /* color_table_glob — неизвестен (цвет — UI-функция) */
+        /* функции */
+        0,           /* dispatcher — монитор идёт хуком Send (rak_send_va) */
+        0,           /* get_by_net_id — не нужен (скан пулов) */
+        0x017B17A4,  /* get_player_by_id (PlayerPool::GetRemote, VA) */
+        0,           /* create_vehicle — не выделен */
+        0,           /* veh_engine_method — не выделен */
+        /* поля (относительно ПЕДА — см. ped-офсеты ниже) */
+        0x540, 0x548, 0, 0, 0xB8, 0x430, 0,
+        /* sync_id_glob — монитор через хук Send */
+        0,
+        /* сигнатуры — нет бинарника для снятия */
+        { 0 }, { 0 }, { 0 }, { 0 },
+        /* новое (16.111) */
+        0x38,        /* player_ped_off_local: CLocalPlayer+0x38 CPed* */
+        0x10,        /* player_ped_off_remote: CRemotePlayer+0x10 CPed* */
+        0x036130A0,  /* rak_client_glob */
+        0x01901D44,  /* jni_step_va */
+        0x01902270,  /* jni_touch_va */
+        0x01A513B8,  /* rak_send_va */
+        0x01A51AC8,  /* rak_rpc_va */
+        0x036130D0,  /* obj_pool_glob (4096×8) */
+    },
 };
 
 const int BR_TABLE_COUNT = (int)(sizeof(BR_TABLES) / sizeof(BR_TABLES[0]));

@@ -7,15 +7,16 @@
 #include <stdbool.h>
 
 typedef struct {
-    int    build;         /* форс сборки: 0=auto, 1=16.106, 2=16.110 */
+    int    build;         /* форс сборки: 0=auto, 1=16.106, 2=16.110, 3=16.111, 4=custom */
     float  ui_opacity;    /* 0.3..1 */
-    float  menu_scale;    /* 0.8..2 */
+    float  menu_scale;    /* 0 = авто, 0.5..2.0 */
     float  radar_range;   /* метры */
     int    esp_blip;      /* размер блипа, px */
     bool   show_players;
     bool   show_vehicles;
     bool   show_labels;
     bool   show_north;
+    bool   show_mini_hud; /* мини-HUD (16.111-стиль) */
     int    local_id;      /* -1 = авто */
     bool   turbo_on;
     float  turbo_mult;

@@ -21,6 +21,19 @@ static void verify_table(int tidx, struct verify_res *r)
     uintptr_t base = g_det.base;
     memset(r, 0, sizeof(*r));
 
+    if (t->player_ped_off_local) {
+        /* 16.111: локальный игрок (mgr+0 → CPed) + пул v2 (CNetVehicle*).
+         * mgr-проба — слабее, чем legacy: локальный объект может не быть
+         * создан до входа в лобби; build-id match + читаемый пул достаточно
+         * (строгой local-проба при apply, local_obj может быть 0 временно). */
+        r->pool_ok = t->pool_glob && br_pool_plausible_v2(base + t->pool_glob, 0);
+        uint64_t mg = 0;
+        r->mgr_ok = t->player_mgr_glob && br_safe_read(base + t->player_mgr_glob, &mg, 8) && mg != 0;
+        if (r->mgr_ok) br_validate_local16111(base + t->player_mgr_glob, 0); /* диагностически */
+        if (r->pool_ok) r->pool_valid = br_pool_valid_v2(base + t->pool_glob);
+        return;
+    }
+
     r->pool_ok = t->pool_glob && br_pool_plausible(base + t->pool_glob, 0);
     r->mgr_ok  = t->player_mgr_glob && br_validate_manager(base + t->player_mgr_glob, &r->mgr_valid, &r->online);
     r->ped_ok  = t->ped_table_glob && br_validate_ped_table(base + t->ped_table_glob, &r->ped_valid);
@@ -83,11 +96,19 @@ void br_detect_apply(void)
     else if (t && t->color_table_glob) s->color_table = base + t->color_table_glob;
 
     /* --- смещения --- */
+    s->player_ped_off_local = (t && t->player_ped_off_local) ? t->player_ped_off_local : 0;
+    s->player_ped_off_remote = (t && t->player_ped_off_remote) ? t->player_ped_off_remote : 0;
+    s->pool_v2 = (t && t->player_ped_off_local) ? 1 : 0;
+    s->local_obj = 0;
+    if (s->pool_v2 && t->player_mgr_glob)
+        br_validate_local16111(base + t->player_mgr_glob, &s->local_obj);
+
     s->player_veh_off = (t && t->player_veh_ptr_off) ? t->player_veh_ptr_off : g_det.probe.player_veh_off;
     s->player_ped_off = g_det.probe.player_ped_off;
 
-    /* авто-поиск player_veh_off: первый игрок в машине + обратная ссылка 0xB8 */
-    if (!s->player_veh_off && s->mgr_slots) {
+    /* авто-поиск player_veh_off: первый игрок в машине + обратная ссылка 0xB8
+     * (только legacy: в 16.111 veh-указатель берётся из пед-офсета таблицы) */
+    if (!s->player_veh_off && s->mgr_slots && !s->pool_v2) {
         for (int id = 0; id < BR_MAX_PLAYERS; id++) {
             uintptr_t obj = br_state_player_obj(id);
             if (!obj) continue;

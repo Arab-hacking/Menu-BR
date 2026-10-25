@@ -9,6 +9,8 @@
 #include "ui_menu.h"
 #include "ui_gl.h"
 #include "jnistub.h"
+#include "func_hook.h"
+#include "netmon.h"
 #include <pthread.h>
 #include <fcntl.h>
 
@@ -66,6 +68,47 @@ static volatile int g_waiting  = 0;  /* отложенный init идёт */
 static volatile int g_shutdown = 0;
 static pthread_mutex_t g_init_mtx = PTHREAD_MUTEX_INITIALIZER;
 
+/* ---------- 16.111: хуки JNILib_step / multiTouchEvent ---------- */
+static void (*g_orig_step)(void *, void *) = 0;
+static void (*g_orig_touch)(void *, void *, int, int, int, int, int, int, int, int) = 0;
+
+static void jni_step_hook(void *env, void *thiz)
+{
+    if (g_orig_step) g_orig_step(env, thiz);
+    br_frame_render_ui();
+}
+
+static int   g_touch_cnt_prev = 0;
+static float g_touch_cy_prev  = 0;
+
+static void jni_touch_hook(void *env, void *thiz, int action, int count,
+                           int x1, int y1, int x2, int y2, int x3, int y3)
+{
+    (void)env; (void)thiz;
+    int a = action & 0xFF;
+    if (a == 0 || a == 5)       br_input_feed(IN_MOUSE_DOWN, (float)x1, (float)y1);
+    else if (a == 2 || a == 7)  br_input_feed(IN_MOUSE_MOVE, (float)x1, (float)y1);
+    else if (a == 1 || a == 6 || a == 3) br_input_feed(IN_MOUSE_UP, (float)x1, (float)y1);
+
+    /* два пальца = колесо (вертикальный сдвиг центроида, как в AInputQueue) */
+    if (count >= 2) {
+        float cy = (float)(y1 + y2 + (count > 2 ? y3 : 0)) / (float)count;
+        if (g_touch_cnt_prev >= 2)
+            br_input_feed(IN_MOUSE_WHEEL, 0.0f, (g_touch_cy_prev - cy) / 24.0f);
+        g_touch_cy_prev = cy;
+        g_touch_cnt_prev = 2;
+    } else {
+        g_touch_cnt_prev = 0;
+    }
+
+    /* блокируем прокликивание игры сквозь окно меню (DOWN/MOVE внутри окна) */
+    if (g_orig_touch) {
+        bool inside = br_ui_menu_hit((float)x1, (float)y1);
+        if (!(inside && (a == 0 || a == 2)))
+            g_orig_touch(env, thiz, action, count, x1, y1, x2, y2, x3, y3);
+    }
+}
+
 /* GL + хуки + треды + UI. Предусловие: br_detect_init() == BRMENU_OK. */
 static int init_after_detect(void)
 {
@@ -75,27 +118,62 @@ static int init_after_detect(void)
     }
 
     int hooked = 0;
-    if (br_hook_install(&g_hook_glDrawElements, "glDrawElements", (void *)br_hook_glDrawElements) == 0)
-        hooked++;
-    if (br_hook_install(&g_hook_glClear, "glClear", (void *)br_hook_glClear) == 0)
-        hooked++;
-    if (br_hook_install(&g_hook_glDrawArrays, "glDrawArrays", (void *)br_hook_glDrawArrays) == 0)
-        hooked++;
-    if (hooked == 0) {
-        br_plt_hook_t h;
-        if (br_hook_install(&h, "glDrawElementsInstanced", (void *)br_hook_glDrawElements) == 0) {
-            hooked++;
-            LOGW("используется fallback-хук glDrawElementsInstanced");
-        }
-    }
-    if (hooked == 0) {
-        LOGE("не удалось поставить ни одного хука");
-        return BRMENU_ERR_HOOK;
-    }
+    const br_build_table_t *tbl = g_det.tbl;
 
-    br_state_start_sampler();
-    br_input_start();
-    br_ui_init();
+    if (tbl && tbl->jni_step_va) {
+        /* 16.111: функция-хуки (JNILib_step + multiTouchEvent) + net-монитор */
+        void *orig = 0;
+        if (br_fhook_install((void *)(g_det.base + tbl->jni_step_va),
+                             (void *)jni_step_hook, &orig) == 0) {
+            g_orig_step = (void (*)(void *, void *))orig;
+            hooked++;
+        } else {
+            LOGE("16.111: хук JNILib_step не установлен");
+        }
+        if (tbl->jni_touch_va) {
+            void *o = 0;
+            if (br_fhook_install((void *)(g_det.base + tbl->jni_touch_va),
+                                 (void *)jni_touch_hook, &o) == 0) {
+                g_orig_touch = (void (*)(void *, void *, int, int, int, int, int, int, int, int))o;
+                hooked++;
+            } else {
+                LOGE("16.111: хук multiTouchEvent не установлен");
+            }
+        }
+        if (tbl->rak_send_va || tbl->rak_rpc_va) {
+            if (br_netmon_attach(g_det.base, tbl->rak_send_va, tbl->rak_rpc_va))
+                hooked++;
+        }
+        if (hooked == 0) {
+            LOGE("16.111: не удалось поставить ни одного хука");
+            return BRMENU_ERR_HOOK;
+        }
+        br_state_start_sampler();
+        /* ввод: AInputQueue НЕ используем — touch приходит из хука */
+        br_ui_init();
+    } else {
+        /* legacy 16.110/16.106: PLT-хуки GL-функций */
+        if (br_hook_install(&g_hook_glDrawElements, "glDrawElements", (void *)br_hook_glDrawElements) == 0)
+            hooked++;
+        if (br_hook_install(&g_hook_glClear, "glClear", (void *)br_hook_glClear) == 0)
+            hooked++;
+        if (br_hook_install(&g_hook_glDrawArrays, "glDrawArrays", (void *)br_hook_glDrawArrays) == 0)
+            hooked++;
+        if (hooked == 0) {
+            br_plt_hook_t h;
+            if (br_hook_install(&h, "glDrawElementsInstanced", (void *)br_hook_glDrawElements) == 0) {
+                hooked++;
+                LOGW("используется fallback-хук glDrawElementsInstanced");
+            }
+        }
+        if (hooked == 0) {
+            LOGE("не удалось поставить ни одного хука");
+            return BRMENU_ERR_HOOK;
+        }
+        br_state_start_sampler();
+        br_input_start();
+        br_ui_init();
+    }
 
     g_st.local_id = g_cfg.local_id;
     br_feat_set_turbo(g_cfg.turbo_on ? 1 : 0, g_cfg.turbo_mult);
@@ -233,6 +311,8 @@ extern "C" int MenuBR_Shutdown(void)
     br_state_stop_sampler();
     br_input_stop();
     br_monitor_stop();
+    br_netmon_stop();
+    br_fhook_remove_all();
     if (g_hook_glDrawElements.installed) br_hook_remove(&g_hook_glDrawElements);
     if (g_hook_glClear.installed) br_hook_remove(&g_hook_glClear);
     if (g_hook_glDrawArrays.installed) br_hook_remove(&g_hook_glDrawArrays);
@@ -246,6 +326,24 @@ extern "C" int MenuBR_Shutdown(void)
     pthread_mutex_unlock(&g_init_mtx);
     LOGI("Menu-BR остановлен");
     return BRMENU_OK;
+}
+
+static void *shutdown_thread_fn(void *arg)
+{
+    (void)arg;
+    /* ждём выхода из текущего GL-кадра, затем полный shutdown */
+    usleep(400 * 1000);
+    MenuBR_Shutdown();
+    return 0;
+}
+
+void br_shutdown_request(void)
+{
+    LOGI("shutdown: запрошено из UI");
+    /* отдельный тред: не рвём хуки изнутри собственного GL-кадра */
+    pthread_t t;
+    if (pthread_create(&t, 0, shutdown_thread_fn, 0) == 0)
+        pthread_detach(t);
 }
 
 extern "C" int MenuBR_IsActive(void)

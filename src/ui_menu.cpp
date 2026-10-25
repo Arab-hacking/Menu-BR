@@ -1,5 +1,10 @@
 /*
- * ui_menu.cpp — ImGui-меню (вкладки: Self / Machines / Players / ESP / Net / Settings / Log)
+ * ui_menu.cpp — меню (редизайн 16.111):
+ *   - плавающий pill-бейдж (открытие/закрытие, HUD, FPS) — перетаскиваемый,
+ *   - мини-HUD (телеметрия локального игрока + сети),
+ *   - главное окно с вкладками, тёмная тема с cyan-акцентом,
+ *   - ui_scale (авто по высоте экрана или ручной), адаптивные размеры,
+ *   - кириллица через системный Roboto/Noto.
  */
 #include "br_common.h"
 #include "detect.h"
@@ -8,21 +13,24 @@
 #include "ui_gl.h"
 #include "ui_menu.h"
 #include "ui_esp.h"
+#include "netmon.h"
 #include <imgui.h>
 
 /* ---------------- состояние UI ---------------- */
-static bool  g_ctx_ready = false;
-static bool  g_uigl_ready = false;
-static bool  g_menu_open = true;
-static bool  g_radar_open = true;
-static bool  g_log_open = false;
+static bool   g_ctx_ready  = false;
+static bool   g_uigl_ready = false;
+static bool   g_menu_open  = true;
+static bool   g_radar_open = true;
 static double g_last_frame_ms = 0;
 
-/* горячая кнопка */
-static ImVec2 g_btn_px(0, 0);
-static bool   g_btn_down = false;
-static ImVec2 g_btn_start(0, 0);
-static bool   g_btn_moved = false;
+/* хит-рект (для swallow кликов, 16.111) */
+static ImVec2 g_menu_rmin, g_menu_rmax;
+static ImVec2 g_pill_rmin, g_pill_rmax;
+
+/* drag pill */
+static bool   g_pill_down  = false;
+static ImVec2 g_pill_start;
+static bool   g_pill_moved = false;
 
 /* ---------------- input -> imgui ---------------- */
 static void consume_input(void)
@@ -47,7 +55,7 @@ static void consume_input(void)
     }
 }
 
-/* ---------------- helper ---------------- */
+/* ---------------- helpers ---------------- */
 static float dist_to(const float *a, const float *b)
 {
     float dx = a[0]-b[0], dy = a[1]-b[1], dz = a[2]-b[2];
@@ -61,6 +69,209 @@ static const br_player_t *local_player(void)
     return g_st.players[id].online ? &g_st.players[id] : 0;
 }
 
+static bool player_in_veh(const br_player_t *p)
+{
+    if (g_st.pool_v2) return p->state != 0;
+    return p->state == 0x13;
+}
+
+static float ui_scale_now(int h)
+{
+    if (g_cfg.menu_scale > 0.0f) return g_cfg.menu_scale;
+    float s = (float)h / 1080.0f;
+    if (s < 0.85f) s = 0.85f;
+    if (s > 2.0f)  s = 2.0f;
+    return s;
+}
+
+/* ---------------- тема ---------------- */
+static void apply_theme(void)
+{
+    ImGuiStyle *st = &ImGui::GetStyle();
+    ImGui::StyleColorsDark(st);
+    ImVec4 *c = st->Colors;
+    c[ImGuiCol_WindowBg]       = ImVec4(0.06f, 0.08f, 0.11f, 0.95f);
+    c[ImGuiCol_ChildBg]        = ImVec4(0.08f, 0.10f, 0.14f, 0.60f);
+    c[ImGuiCol_PopupBg]        = ImVec4(0.08f, 0.10f, 0.13f, 0.98f);
+    c[ImGuiCol_Border]         = ImVec4(0.16f, 0.22f, 0.30f, 0.70f);
+    c[ImGuiCol_FrameBg]        = ImVec4(0.12f, 0.16f, 0.22f, 1.00f);
+    c[ImGuiCol_FrameBgHovered] = ImVec4(0.17f, 0.24f, 0.33f, 1.00f);
+    c[ImGuiCol_FrameBgActive]  = ImVec4(0.20f, 0.30f, 0.42f, 1.00f);
+    c[ImGuiCol_TitleBg]        = ImVec4(0.05f, 0.07f, 0.10f, 1.00f);
+    c[ImGuiCol_TitleBgActive]  = ImVec4(0.10f, 0.16f, 0.24f, 1.00f);
+    c[ImGuiCol_CheckMark]      = ImVec4(0.22f, 0.78f, 0.95f, 1.00f);
+    c[ImGuiCol_SliderGrab]     = ImVec4(0.22f, 0.78f, 0.95f, 0.85f);
+    c[ImGuiCol_SliderGrabActive]= ImVec4(0.22f, 0.84f, 0.96f, 1.00f);
+    c[ImGuiCol_Button]         = ImVec4(0.13f, 0.20f, 0.29f, 1.00f);
+    c[ImGuiCol_ButtonHovered]  = ImVec4(0.20f, 0.42f, 0.55f, 1.00f);
+    c[ImGuiCol_ButtonActive]   = ImVec4(0.22f, 0.55f, 0.70f, 1.00f);
+    c[ImGuiCol_Header]         = ImVec4(0.15f, 0.25f, 0.36f, 0.80f);
+    c[ImGuiCol_HeaderHovered]  = ImVec4(0.20f, 0.35f, 0.50f, 0.80f);
+    c[ImGuiCol_HeaderActive]   = ImVec4(0.22f, 0.42f, 0.62f, 1.00f);
+    c[ImGuiCol_Tab]            = ImVec4(0.10f, 0.15f, 0.22f, 1.00f);
+    c[ImGuiCol_TabHovered]     = ImVec4(0.22f, 0.55f, 0.70f, 0.80f);
+    c[ImGuiCol_TabActive]      = ImVec4(0.16f, 0.30f, 0.42f, 1.00f);
+    c[ImGuiCol_Separator]      = ImVec4(0.20f, 0.28f, 0.38f, 0.70f);
+    c[ImGuiCol_Text]           = ImVec4(0.88f, 0.92f, 0.96f, 1.00f);
+    c[ImGuiCol_TextDisabled]   = ImVec4(0.45f, 0.52f, 0.60f, 1.00f);
+    st->WindowRounding  = 10.0f;
+    st->ChildRounding   = 8.0f;
+    st->FrameRounding   = 6.0f;
+    st->GrabRounding    = 6.0f;
+    st->PopupRounding   = 8.0f;
+    st->ScrollbarRounding= 8.0f;
+    st->TabRounding     = 6.0f;
+    st->WindowPadding   = ImVec2(14, 12);
+    st->ItemSpacing     = ImVec2(8, 7);
+}
+
+/* ---------------- шрифт (системный, кириллица) ---------------- */
+static void load_fonts(float size)
+{
+    ImGuiIO *io = &ImGui::GetIO();
+    io->Fonts->Clear();
+    static const char *paths[] = {
+        "/system/fonts/Roboto-Medium.ttf",
+        "/system/fonts/Roboto-Regular.ttf",
+        "/system/fonts/NotoSans-Regular.ttf",
+        "/system/fonts/DroidSans.ttf",
+    };
+    ImFont *f = 0;
+    ImFontConfig cfg;
+    for (int i = 0; i < 4 && !f; i++) {
+        f = io->Fonts->AddFontFromFileTTF(paths[i], size, &cfg,
+                                          io->Fonts->GetGlyphRangesCyrillic());
+    }
+    if (!f) {
+        f = io->Fonts->AddFontDefault();
+        LOGI("ui: системный шрифт не найден, default (без кириллицы)");
+    } else {
+        LOGI("ui: шрифт %s %.0fpx", paths[0], size);
+    }
+    io->FontDefault = f;
+}
+
+static void br_ui_init_ex(int w, int h)
+{
+    if (g_ctx_ready) return;
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO *io = &ImGui::GetIO();
+    io->IniFilename = NULL; /* не пишем imgui.ini в процесс игры */
+    io->DisplaySize = ImVec2((float)w, (float)h);
+    float fs = (float)h / 45.0f;
+    if (fs < 14.0f) fs = 14.0f;
+    if (fs > 28.0f) fs = 28.0f;
+    load_fonts(fs);
+    apply_theme();
+    g_ctx_ready = true;
+}
+
+void br_ui_init(void)
+{
+    br_ui_init_ex(1280, 720);
+}
+
+/* ---------------- pill (плавающий бейдж) ---------------- */
+static void draw_pill(int w, int h, float s)
+{
+    ImGui::SetNextWindowPos(ImVec2(g_cfg.btn_x * w, g_cfg.btn_y * h), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.90f);
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize |
+                             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing;
+    if (!ImGui::Begin("##BRPill", 0, flags)) { ImGui::End(); return; }
+
+    g_pill_rmin = ImGui::GetWindowPos();
+    g_pill_rmax = ImVec2(g_pill_rmin.x + ImGui::GetWindowWidth(),
+                         g_pill_rmin.y + ImGui::GetWindowHeight());
+
+    const ImVec4 accent = g_menu_open ? ImVec4(0.22f, 0.84f, 0.96f, 1.0f)
+                                      : ImVec4(0.65f, 0.75f, 0.85f, 1.0f);
+    ImGui::TextColored(accent, "BR %s", br_build_name(g_st.build));
+    ImGui::SameLine();
+    if (ImGui::Button(g_menu_open ? "Скрыть" : "Меню", ImVec2(74*s, 0)))
+        g_menu_open = !g_menu_open;
+    ImGui::SameLine();
+    if (ImGui::SmallButton(g_cfg.show_mini_hud ? "HUD:ВКЛ" : "HUD")) {
+        g_cfg.show_mini_hud = !g_cfg.show_mini_hud;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("| %.0f FPS | П:%d М:%d",
+                        ImGui::GetIO().Framerate, g_st.players_online, g_st.vehicles_count);
+
+    /* drag */
+    ImGuiIO *io = &ImGui::GetIO();
+    ImVec2 m(io->MousePos.x, io->MousePos.y);
+    bool over = m.x >= g_pill_rmin.x && m.x <= g_pill_rmax.x &&
+                m.y >= g_pill_rmin.y && m.y <= g_pill_rmax.y;
+    if (io->MouseClicked[0] && over) {
+        g_pill_down = true; g_pill_start = m; g_pill_moved = false;
+    }
+    if (io->MouseDown[0] && g_pill_down) {
+        ImVec2 d(m.x - g_pill_start.x, m.y - g_pill_start.y);
+        if (d.x*d.x + d.y*d.y > 64) g_pill_moved = true;
+        if (g_pill_moved) {
+            float nx = (m.x - 20.0f) / w;
+            float ny = (m.y - 12.0f) / h;
+            if (nx < 0.01f) nx = 0.01f; if (nx > 0.95f) nx = 0.95f;
+            if (ny < 0.01f) ny = 0.01f; if (ny > 0.95f) ny = 0.95f;
+            g_cfg.btn_x = nx; g_cfg.btn_y = ny;
+        }
+    }
+    if (!io->MouseDown[0] && g_pill_down) {
+        g_pill_down = false;
+        if (!g_pill_moved) g_menu_open = !g_menu_open;
+    }
+    ImGui::End();
+}
+
+/* ---------------- мини-HUD ---------------- */
+static void draw_mini_hud(float s)
+{
+    ImGui::SetNextWindowPos(ImVec2(24.0f * s, 84.0f * s), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowBgAlpha(0.82f);
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize |
+                             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove;
+    if (!ImGui::Begin("##BRMiniHud", 0, flags)) { ImGui::End(); return; }
+
+    ImGui::TextColored(ImVec4(0.30f, 0.85f, 0.98f, 1.0f),
+                       "Black Russia %s", br_build_name(g_st.build));
+    ImGui::Separator();
+
+    const br_player_t *lp = local_player();
+    if (lp) {
+        ImGui::Text("Игрок: %d%s", lp->id, lp->name[0] ? lp->name : "");
+        if (lp->hp >= 0) {
+            ImVec4 hc = lp->hp > 25 ? ImVec4(0.4f, 0.9f, 0.5f, 1) : ImVec4(1, 0.4f, 0.4f, 1);
+            ImGui::TextColored(hc, "HP %.0f / Armor %.0f", lp->hp, lp->armor);
+        }
+        ImGui::Text("XYZ: %.0f / %.0f / %.0f", lp->pos[0], lp->pos[1], lp->pos[2]);
+        if (player_in_veh(lp))
+            ImGui::TextColored(ImVec4(0.6f, 1.0f, 0.6f, 1),
+                               "Авто #%u (%s): %.0f км/ч", lp->veh_id,
+                               lp->veh_class >= 0 ? br_vehicle_class_name(lp->veh_class) : "?",
+                               lp->speed * 3.6f);
+        else
+            ImGui::Text("Пешком: %.0f км/ч", lp->speed * 3.6f);
+    } else {
+        ImGui::TextDisabled("локальный игрок не найден");
+    }
+
+    ImGui::Separator();
+    ImGui::Text("Онлайн: %d   Машин: %d", g_st.players_online, g_st.vehicles_count);
+
+    if (g_st.pool_v2) {
+        int ping = br_netmon_ping_avg();
+        int mtu = br_netmon_mtu();
+        if (ping >= 0)
+            ImGui::Text("Сеть: ping %d мс | MTU %d | %s", ping, mtu,
+                        br_netmon_connected() ? "онлайн" : "откл.");
+        else
+            ImGui::TextDisabled("Сеть: данные появятся в лобби");
+    }
+    ImGui::End();
+}
+
 /* ---------------- Self tab ---------------- */
 static void tab_self(void)
 {
@@ -68,16 +279,27 @@ static void tab_self(void)
 
     ImGui::TextDisabled("Локальный игрок");
     if (lp) {
-        ImGui::Text("ID: %d    Скорость: %.1f м/с (%.0f км/ч)",
-                    lp->id, lp->speed, lp->speed * 3.6f);
+        ImGui::Text("ID: %d%s", lp->id, lp->name[0] ? lp->name : "");
+        ImGui::Text("Скорость: %.1f м/с (%.0f км/ч)", lp->speed, lp->speed * 3.6f);
         ImGui::Text("Позиция: %.1f / %.1f / %.1f", lp->pos[0], lp->pos[1], lp->pos[2]);
-        if (lp->state == 0x13)
-            ImGui::TextColored((ImVec4){0.6f,1.0f,0.6f,1}, "В машине: id=%d (%s)",
-                               lp->veh_id, lp->veh_class >= 0 ? br_vehicle_class_name(lp->veh_class) : "?");
+        if (lp->hp >= 0)
+            ImGui::Text("HP: %.0f   Armor: %.0f", lp->hp, lp->armor);
+        if (player_in_veh(lp))
+            ImGui::TextColored((ImVec4){0.6f,1.0f,0.6f,1}, "В машине: #%u (%s)",
+                               lp->veh_id,
+                               lp->veh_class >= 0 ? br_vehicle_class_name(lp->veh_class) : "?");
         else
             ImGui::TextColored((ImVec4){1.0f,0.9f,0.6f,1}, "Пешком");
     } else {
         ImGui::TextColored((ImVec4){1,0.5f,0.5f,1}, "не найден (ожидание данных...)");
+    }
+
+    if (g_st.pool_v2) {
+        ImGui::Separator();
+        if (ImGui::Button("Лечить (HP/Armor = 100)", ImVec2(220, 0))) {
+            float hv[2] = { 100.0f, 100.0f };
+            br_feat_queue(FEAT_HEAL, hv, 8);
+        }
     }
 
     ImGui::Separator();
@@ -103,14 +325,15 @@ static void tab_self(void)
     ImGui::Text("Телепорт (координаты мира)");
     {
         static float tx = 0, ty = 0, tz = 0;
-        if (lp && !ImGui::GetIO().WantCaptureKeyboard) {
-            /* предзаполнить текущей позицией при первом показе */
-            static int prefill = 0;
-            if (!prefill && (lp->pos[0] || lp->pos[1] || lp->pos[2])) {
-                tx = lp->pos[0]; ty = lp->pos[1]; tz = lp->pos[2];
-                prefill = 1;
-            }
+        static int prefill = 0;
+        if (lp && !prefill && (lp->pos[0] || lp->pos[1] || lp->pos[2])) {
+            tx = lp->pos[0]; ty = lp->pos[1]; tz = lp->pos[2];
+            prefill = 1;
         }
+        if (ImGui::Button("Текущие")) {
+            if (lp) { tx = lp->pos[0]; ty = lp->pos[1]; tz = lp->pos[2]; }
+        }
+        ImGui::SameLine();
         ImGui::InputFloat("X", &tx);
         ImGui::InputFloat("Y", &ty);
         ImGui::InputFloat("Z", &tz);
@@ -135,6 +358,18 @@ static void tab_self(void)
             br_feat_set_turbo(br_feat_turbo_on() ? 1 : 0, m);
             g_cfg.turbo_mult = m;
         }
+        if (g_st.pool_v2)
+            ImGui::TextDisabled("режим: удержание скорости (vel-крюиз)");
+    }
+
+    ImGui::Separator();
+    ImGui::Text("Мой цвет (таблица цветов)");
+    if (g_st.color_table) {
+        static float col[3] = { 1.0f, 0.35f, 0.35f };
+        if (ImGui::ColorEdit3("RGB", col))
+            br_feat_queue(FEAT_SET_COLOR, col, 12);
+    } else {
+        ImGui::TextDisabled("таблица цветов не найдена для сборки");
     }
 }
 
@@ -148,8 +383,10 @@ static void tab_vehicles(void)
     if (!g_st.pool_table)
         ImGui::TextColored((ImVec4){1,0.5f,0.5f,1}, "пул машин не найден");
 
-    if (ImGui::BeginTable("vehs", 6,
-            ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable)) {
+    if (n > 0 && ImGui::BeginTable("vehs", 6,
+            ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Borders |
+            ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY,
+            ImVec2(0, 0))) {
         ImGui::TableSetupColumn("NetID", ImGuiTableColumnFlags_WidthFixed, 60);
         ImGui::TableSetupColumn("Класс", ImGuiTableColumnFlags_WidthFixed, 80);
         ImGui::TableSetupColumn("Водитель", ImGuiTableColumnFlags_WidthFixed, 70);
@@ -188,30 +425,33 @@ static void tab_vehicles(void)
     if (g_sel_veh >= 0 && g_sel_veh < n) {
         br_vehicle_t *v = &g_st.vehicles[g_sel_veh];
         ImGui::Separator();
-        ImGui::Text("Машина %u (%s):", v->net_id, br_vehicle_class_name(v->veh_class));
-        if (v->occupant_id) {
-            if (ImGui::Button("Телепорт к машине", ImVec2(180, 0))) {
-                float xyz[3] = { v->pos[0], v->pos[1], v->pos[2] };
-                br_feat_queue(FEAT_TELEPORT, xyz, 12);
-            }
+        ImGui::Text("Машина #%u (%s):", v->net_id, br_vehicle_class_name(v->veh_class));
+        if (ImGui::Button("Телепорт к машине", ImVec2(180, 0))) {
+            float xyz[3] = { v->pos[0], v->pos[1], v->pos[2] };
+            br_feat_queue(FEAT_TELEPORT, xyz, 12);
         }
-        /* двигатель — только если адрес метода известен */
+        if (g_st.pool_v2) {
+            ImGui::SameLine();
+            if (ImGui::Button("Сесть", ImVec2(80, 0)))
+                br_feat_queue(FEAT_ENTER_NETID, &v->net_id, 4);
+        }
         uintptr_t eng = g_det.tbl ? g_det.tbl->veh_engine_method : 0;
         if (g_det.custom_engine_fn) eng = g_det.custom_engine_fn;
         if (eng) {
+            ImGui::SameLine();
             if (ImGui::Button("Двигатель: ON", ImVec2(110, 0)))
                 { int a[2] = { g_sel_veh, 1 }; br_feat_queue(FEAT_ENGINE, a, 8); }
             ImGui::SameLine();
             if (ImGui::Button("Двигатель: OFF", ImVec2(110, 0)))
                 { int a[2] = { g_sel_veh, 0 }; br_feat_queue(FEAT_ENGINE, a, 8); }
-        } else {
-            ImGui::TextDisabled("двигатель: адрес метода не известен для сборки");
+        } else if (g_st.pool_v2) {
+            ImGui::TextDisabled("двигатель: метод не установлен для этой сборки");
         }
     }
 
     ImGui::Separator();
-    ImGui::Text("Спавн машины (экспериментально)");
-    {
+    if (!g_st.pool_v2) {
+        ImGui::Text("Спавн машины (экспериментально)");
         static int model = 513;
         ImGui::InputInt("Модель (vid)", &model);
         if (ImGui::Button("Создать", ImVec2(110, 0)))
@@ -224,6 +464,8 @@ static void tab_vehicles(void)
         ImGui::TextDisabled("фабрика: %s",
             (g_det.tbl && g_det.tbl->create_vehicle) || g_det.custom_create_veh
                 ? "адрес есть" : "адрес не известен — укажите в Net");
+    } else {
+        ImGui::TextDisabled("спавн машин: для этой сборки метод не установлен");
     }
 }
 
@@ -235,14 +477,17 @@ static void tab_players(void)
     int online = g_st.players_online;
     ImGui::Text("Игроков онлайн: %d", online);
 
-    if (ImGui::BeginTable("ply", 6,
-            ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable)) {
+    if (online > 0 && ImGui::BeginTable("ply", 7,
+            ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Borders |
+            ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY,
+            ImVec2(0, 0))) {
         ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthFixed, 56);
+        ImGui::TableSetupColumn("Ник", ImGuiTableColumnFlags_WidthStretch, 1.2f);
         ImGui::TableSetupColumn("Состояние", ImGuiTableColumnFlags_WidthFixed, 84);
         ImGui::TableSetupColumn("Машина", ImGuiTableColumnFlags_WidthFixed, 64);
         ImGui::TableSetupColumn("Дист, м", ImGuiTableColumnFlags_WidthFixed, 70);
         ImGui::TableSetupColumn("Скор", ImGuiTableColumnFlags_WidthFixed, 56);
-        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 0.6f);
         ImGui::TableHeadersRow();
 
         const br_player_t *lp = local_player();
@@ -257,7 +502,9 @@ static void tab_players(void)
             ImGui::TableNextColumn();
             ImGui::Text("%d%s", id, (id == g_st.local_id_eff) ? " *" : "");
             ImGui::TableNextColumn();
-            ImGui::Text("%s", p->state == 0x13 ? "в машине" : "пешком");
+            ImGui::Text("%s", p->name[0] ? p->name : "—");
+            ImGui::TableNextColumn();
+            ImGui::Text("%s", player_in_veh(p) ? "в машине" : "пешком");
             ImGui::TableNextColumn();
             ImGui::Text("%u", p->veh_id);
             ImGui::TableNextColumn();
@@ -276,12 +523,14 @@ static void tab_players(void)
     if (g_sel_player >= 0 && g_st.players[g_sel_player].online) {
         br_player_t *p = &g_st.players[g_sel_player];
         ImGui::Separator();
-        ImGui::Text("Игрок %d (поз %.0f/%.0f/%.0f):", p->id, p->pos[0], p->pos[1], p->pos[2]);
+        ImGui::Text("Игрок %d%s (поз %.0f/%.0f/%.0f):", p->id,
+                    p->name[0] ? p->name : "", p->pos[0], p->pos[1], p->pos[2]);
         if (g_st.local_id_eff != p->id) {
             if (ImGui::Button("Телепорт к игроку", ImVec2(180, 0))) {
                 float xyz[3] = { p->pos[0], p->pos[1], p->pos[2] };
                 br_feat_queue(FEAT_TELEPORT, xyz, 12);
             }
+            ImGui::SameLine();
         }
         if (ImGui::Button("Сделать локальным", ImVec2(180, 0))) {
             g_st.local_id = p->id;
@@ -289,23 +538,13 @@ static void tab_players(void)
             br_feat_queue(FEAT_SET_LOCAL, &g_st.local_id, 4);
         }
     }
-
-    ImGui::Separator();
-    ImGui::Text("Мой цвет (таблица цветов, RPC 401)");
-    {
-        static float col[3] = { 1.0f, 0.35f, 0.35f };
-        if (ImGui::ColorEdit3("RGB", col)) {
-            br_feat_queue(FEAT_SET_COLOR, col, 12);
-        }
-        if (!g_st.color_table)
-            ImGui::TextDisabled("таблица цветов не найдена");
-    }
 }
 
 /* ---------------- ESP tab ---------------- */
 static void tab_esp(void)
 {
     if (ImGui::Checkbox("Радар (ESP)", &g_radar_open)) { /* */ }
+    if (ImGui::Checkbox("Мини-HUD", &g_cfg.show_mini_hud)) { /* */ }
     ImGui::SliderFloat("Дальность, м", &g_cfg.radar_range, 50.0f, 2000.0f, "%.0f");
     ImGui::SliderInt("Блипы, px", &g_cfg.esp_blip, 2, 16);
     ImGui::Checkbox("Игроки", &g_cfg.show_players);
@@ -314,8 +553,7 @@ static void tab_esp(void)
     ImGui::Checkbox("Север (N)", &g_cfg.show_north);
 
     ImGui::Separator();
-    /* превью радара внутри вкладки */
-    ImGui::TextDisabled("Предпросмотр (радар рисуется отдельным окном в углу):");
+    ImGui::TextDisabled("Радар рисуется отдельным окном в углу экрана:");
     ImVec2 sz = ImGui::GetContentRegionAvail();
     float r = (sz.x < sz.y ? sz.x : sz.y) * 0.42f;
     if (r > 20) {
@@ -327,6 +565,36 @@ static void tab_esp(void)
 }
 
 /* ---------------- Net tab ---------------- */
+
+/* справочник raw-пакетов 16.111 (из RE-анализа) */
+static const char *net_name_16111(int kind, int id)
+{
+    if (kind == 0) {
+        switch (id) {
+        case 27: return "string-query";
+        case 29: return "event(41)";
+        case 30: return "player-state 73B";
+        case 31: return "local-sync 55B";
+        case 32: return "veh-state 68B";
+        case 33: return "diff-state 27B";
+        case 34: return "InCar-veh 66B";
+        case 35: return "slot-diff";
+        case 37: return "periodic 19B";
+        case 38: return "onfoot 32B";
+        case 39: return "crane 57B";
+        }
+    }
+    if (kind == 1) {
+        switch (id) {
+        case 314: case 320: case 324: case 342: case 355: case 356:
+        case 357: case 361: case 371: case 374: case 378: case 403:
+        case 414: case 423: case 436: case 437: case 441: return "strict-RPC";
+        case 413: return "RPC-413 (частый)";
+        }
+    }
+    return 0;
+}
+
 static void tab_net(void)
 {
     char bid[41] = "неизвестен";
@@ -336,49 +604,127 @@ static void tab_net(void)
     ImGui::Text("База игры:   0x%lx", (unsigned long)g_det.base);
     ImGui::Text("Build-ID:   %s", bid);
     ImGui::Text("Сборка:     %s", g_st.build ? br_build_name(g_st.build) : "не определена");
-    ImGui::Text("Пул машин:  %s", g_det.src_pool[0] ? g_det.src_pool : "—");
-    ImGui::Text("Менеджер:   %s", g_det.src_mgr[0] ? g_det.src_mgr : "—");
-    ImGui::Text("Педы:       %s", g_det.src_ped[0] ? g_det.src_ped : "—");
+    ImGui::Text("Пул машин:  %s   Менеджер: %s   Педы: %s",
+                g_det.src_pool[0] ? g_det.src_pool : "—",
+                g_det.src_mgr[0]  ? g_det.src_mgr  : "—",
+                g_det.src_ped[0]  ? g_det.src_ped  : "—");
     if (g_det.probe.pool_found)
-        ImGui::TextDisabled("проба: pool=%d слотов, mgr=%d, online=%d",
+        ImGui::TextDisabled("проба: pool=%d, mgr=%d, online=%d",
                             g_det.probe.pool_valid_slots, g_det.probe.mgr_valid_ids,
                             g_det.probe.players_online);
 
-    if (ImGui::Button("Rescan (повторный поиск)", ImVec2(220, 0)))
-        br_feat_queue(FEAT_RESCAN, 0, 0);
+    ImGui::Separator();
+
+    /* 16.111: живой монитор (хуки Send/RPC) */
+    if (g_st.pool_v2) {
+        int ping = br_netmon_ping_avg();
+        int mtu = br_netmon_mtu();
+        if (ping >= 0)
+            ImGui::Text("RakClient: ping %d мс | MTU %d | %s",
+                        ping, mtu, br_netmon_connected() ? "подключён" : "не подключён");
+        else
+            ImGui::TextDisabled("RakClient: данные появятся в лобби");
+        ImGui::Text("Всего: Send %llu | RPC %llu",
+                    (unsigned long long)br_netmon_total(0),
+                    (unsigned long long)br_netmon_total(1));
+
+        if (ImGui::CollapsingHeader("Пакеты (счётчики)", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::BeginTable("nids", 4, ImGuiTableFlags_Borders |
+                                  ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY,
+                                  ImVec2(0, 160))) {
+                ImGui::TableSetupColumn("ID");
+                ImGui::TableSetupColumn("Тип");
+                ImGui::TableSetupColumn("Всего");
+                ImGui::TableSetupColumn("Название");
+                ImGui::TableHeadersRow();
+                for (int id = 0; id < 600; id++) {
+                    uint64_t cs = br_netmon_count(0, id);
+                    uint64_t cr = br_netmon_count(1, id);
+                    if (!cs && !cr) continue;
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn(); ImGui::Text("%d", id);
+                    ImGui::TableNextColumn(); ImGui::Text(cs ? "Send" : "RPC");
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%llu", (unsigned long long)(cs ? cs : cr));
+                    ImGui::TableNextColumn();
+                    const char *nm = net_name_16111(cs ? 0 : 1, id);
+                    ImGui::Text("%s", nm ? nm : "—");
+                }
+                ImGui::EndTable();
+            }
+        }
+        if (ImGui::CollapsingHeader("Последние события")) {
+            net_event_t evs[14];
+            int ne = br_netmon_snapshot(evs, 14);
+            for (int i = 0; i < ne; i++) {
+                char hex[64] = "";
+                for (int b = 0; b < 8 && b < (evs[i].size > 0); b++)
+                    sprintf(hex + strlen(hex), "%02x ", evs[i].head[b]);
+                const char *nm = net_name_16111(evs[i].kind, evs[i].id);
+                ImGui::Text("%s %-11d %3uБ  %uмс  %s%s",
+                            evs[i].kind ? "RPC" : "SEND",
+                            evs[i].id, evs[i].size, evs[i].t,
+                            nm ? nm : "", hex);
+            }
+            if (!ne) ImGui::TextDisabled("событий пока нет");
+        }
+    }
+
+    /* legacy: сэмплирующий sync-монитор (16.110/16.106) */
+    if (!g_st.pool_v2) {
+        ImGui::Text("Синхро-монитор (пакетов/сек)");
+        if (g_mon.running) {
+            static const int ids[] = { 11, 14, 19, 29, 30, 32, 33, 34, 38, 39 };
+            static const char *names[] = {
+                "RPC-канал", "служ. 14", "служ. 19", "смежный 29",
+                "sync игрока", "sync машин", "связка", "InCar", "OnFoot", "Crane"
+            };
+            for (int i = 0; i < (int)(sizeof(ids)/sizeof(ids[0])); i++) {
+                int id = ids[i];
+                ImGui::Text("  %-10s %3d: %6.1f/s  (всего %llu)",
+                            names[i], id, g_mon.pps[id], (unsigned long long)g_mon.total[id]);
+            }
+        } else {
+            ImGui::TextDisabled("недоступен для этой сборки (глобал packetId не выделен)");
+        }
+    }
 
     ImGui::Separator();
-    ImGui::Text("Синхро-монитор (пакетов/сек)");
-    if (g_mon.running) {
-        static const int ids[] = { 11, 14, 19, 29, 30, 32, 33, 34, 38, 39 };
-        static const char *names[] = {
-            "RPC-канал", "служ. 14", "служ. 19", "смежный 29",
-            "sync игрока", "sync машин", "связка", "InCar", "OnFoot", "Crane"
-        };
-        for (int i = 0; i < (int)(int)(sizeof(ids)/sizeof(ids[0])); i++) {
-            int id = ids[i];
-            ImGui::Text("  %-10s %3d: %6.1f/s  (всего %llu)",
-                        names[i], id, g_mon.pps[id], (unsigned long long)g_mon.total[id]);
+    ImGui::Text("Справочник протокола");
+    if (g_st.pool_v2) {
+        if (ImGui::CollapsingHeader("Raw 16.111", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::BulletText("27 — строковые запросы/команды (4 callsite)");
+            ImGui::BulletText("29 — событие, 41 Б (invalid victim check)");
+            ImGui::BulletText("30 — state/sync LocalPlayer, 73 Б (основной)");
+            ImGui::BulletText("31 — local sync helper, 55 Б");
+            ImGui::BulletText("32 — многовекторное vehicle-состояние, 68 Б");
+            ImGui::BulletText("33 — дифф кэша игрока/авто, 27 Б");
+            ImGui::BulletText("34 — InCar vehicle sync, 66 Б");
+            ImGui::BulletText("35 — дифф по слотам (оружие/инвентарь)");
+            ImGui::BulletText("37 — периодическая структура, 19 Б, rate 101 мс");
+            ImGui::BulletText("38 — LocalPlayer onfoot, 32 Б (byteWeaponState)");
+            ImGui::BulletText("39 — транспорт/кран, 57 Б");
+        }
+        if (ImGui::CollapsingHeader("RPC 16.111")) {
+            ImGui::BulletText("строгие: 314 320 324 342 355 356 357 361 371 374 378");
+            ImGui::BulletText("        403 413 414 423 436 437 441");
+            ImGui::BulletText("413 — самый частый (43 strict sites)");
         }
     } else {
-        ImGui::TextDisabled("недоступен для этой сборки (глобал packetId не выделен)");
+        if (ImGui::CollapsingHeader("Синхро-пакеты", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::BulletText("30 — основной синк игрока (поз+кватернион+скорость), ~15-20 Гц");
+            ImGui::BulletText("32 — синк машины: 68 Б (5×96 бит: поз/поворот/скорость...)");
+            ImGui::BulletText("33 — связка игрок↔машина, 26 Б, только S2C, ~2.3 Гц");
+            ImGui::BulletText("34 — InCar: id машины, кватернион, поз, скорость, здоровье");
+            ImGui::BulletText("38 — OnFoot (31 Б)");
+            ImGui::BulletText("39 — кран/порт (56 Б, SetCraneRopeLength)");
+            ImGui::BulletText("11 — RPC-канал (125 обработчиков, id 302-457)");
+        }
     }
 
     ImGui::Separator();
-    ImGui::Text("Справочник протокола (из RE-документации)");
-    if (ImGui::CollapsingHeader("Синхро-пакеты", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::BulletText("30 — основной синк игрока (поз+кватернион+скорость), ~15-20 Гц");
-        ImGui::BulletText("32 — синк машины: 68 Б (5×96 бит: поз/поворот/скорость...)");
-        ImGui::BulletText("33 — связка игрок↔машина, 26 Б, только S2C, ~2.3 Гц");
-        ImGui::BulletText("34 — InCar: id машины, кватернион, поз, скорость, здоровье");
-        ImGui::BulletText("38 — OnFoot (31 Б)");
-        ImGui::BulletText("39 — кран/порт (56 Б, SetCraneRopeLength)");
-        ImGui::BulletText("11 — RPC-канал (125 обработчиков, id 302-457)");
-    }
-
-    ImGui::Separator();
-    ImGui::Text("Ручные адреса (VA в .so; 0 = выкл)");
-    {
+    if (!g_st.pool_v2) {
+        ImGui::Text("Ручные адреса (VA в .so; 0 = выкл)");
         #define HEXFIELD(label, field) \
             { char buf[24]; snprintf(buf, sizeof(buf), "0x%llx", (unsigned long long)g_det.field); \
               if (ImGui::InputText(label, buf, sizeof(buf))) { \
@@ -394,6 +740,9 @@ static void tab_net(void)
         HEXFIELD("engine method",    custom_engine_fn)
         #undef HEXFIELD
     }
+
+    if (ImGui::Button("Rescan (повторный поиск)", ImVec2(220, 0)))
+        br_feat_queue(FEAT_RESCAN, 0, 0);
 }
 
 /* ---------------- Settings tab ---------------- */
@@ -401,17 +750,17 @@ static void tab_settings(void)
 {
     ImGui::Text("Сборка: %s", br_build_name(g_cfg.build));
     {
-        const char *items[] = { "Авто", "16.106.17587", "16.110.18323" };
-        if (ImGui::Combo("Определение", &g_cfg.build, items, 3))
+        const char *items[] = { "Авто", "16.106.17587", "16.110.18323",
+                                "16.111.19050", "Ручной (Custom)" };
+        if (ImGui::Combo("Определение", &g_cfg.build, items, 5))
             br_feat_queue(FEAT_RESCAN, 0, 0);
     }
     ImGui::SliderFloat("Прозрачность меню", &g_cfg.ui_opacity, 0.3f, 1.0f, "%.2f");
-    ImGui::SliderFloat("Масштаб", &g_cfg.menu_scale, 0.7f, 2.0f, "%.2f");
+    ImGui::SliderFloat("Масштаб UI (0 = авто)", &g_cfg.menu_scale, 0.0f, 2.0f, "%.2f");
     {
         static const char *ll[] = { "off", "error", "warn", "info" };
         if (ImGui::Combo("Лог", &g_cfg.log_level, ll, 4)) { /* применяется */ }
     }
-    ImGui::Checkbox("Окно лога", &g_log_open);
     ImGui::Separator();
     if (ImGui::Button("Сохранить настройки", ImVec2(200, 0)))
         br_cfg_save();
@@ -421,6 +770,8 @@ static void tab_settings(void)
         g_st.local_id = g_cfg.local_id;
     }
     ImGui::TextDisabled("файл: %s", br_cfg_path());
+    if (ImGui::Button("Выключить меню (завершение)", ImVec2(260, 0)))
+        br_shutdown_request();
 }
 
 /* ---------------- Log tab ---------------- */
@@ -435,7 +786,6 @@ static void tab_log(void)
         ImU32 c = IM_COL32(240, 240, 240, 255);
         if (lvl[i] == 'E') c = IM_COL32(255, 85, 85, 255);
         else if (lvl[i] == 'W') c = IM_COL32(255, 224, 106, 255);
-        /* строка до \n */
         const char *eol = strchr(p, '\n');
         int len = eol ? (int)(eol - p) : (int)strlen(p);
         ImVec4 col(((c & 0xFF) / 255.0f), (((c >> 8) & 0xFF) / 255.0f), (((c >> 16) & 0xFF) / 255.0f), 1.0f);
@@ -446,66 +796,50 @@ static void tab_log(void)
     ImGui::EndChild();
 }
 
-/* ---------------- горячая кнопка ---------------- */
-static void hot_button(float w, float h)
+/* ---------------- главное окно ---------------- */
+static void draw_menu(int w, int h, float s)
 {
-    g_btn_px = ImVec2(g_cfg.btn_x * w, g_cfg.btn_y * h);
-    ImGuiIO *io = &ImGui::GetIO();
-    ImDrawList *dl = ImGui::GetForegroundDrawList();
-    float r = 22.0f;
-    dl->AddCircleFilled(g_btn_px, r, 0x991B3A5F);
-    dl->AddCircle(g_btn_px, r, 0xFF4FA3E3, 0, 2.0f);
-    dl->AddText(ImVec2(g_btn_px.x - 6.0f, g_btn_px.y - 6.0f), 0xFFFFFFFF, "BR");
+    g_menu_rmin = g_menu_rmax = ImVec2(0, 0); /* до Begin */
 
-    ImVec2 m(io->MousePos.x, io->MousePos.y);
-    bool over = (m.x - g_btn_px.x) * (m.x - g_btn_px.x) +
-                (m.y - g_btn_px.y) * (m.y - g_btn_px.y) <= r * r;
+    float def_w = 980.0f * s;
+    float aw = w * 0.88f; if (aw < 540.0f) aw = 540.0f;
+    if (def_w > aw) def_w = aw;
+    float def_h = 640.0f * s;
+    float ah = h * 0.82f; if (ah < 380.0f) ah = 380.0f;
+    if (def_h > ah) def_h = ah;
 
-    if (io->MouseClicked[0] && over) {
-        g_btn_down = true;
-        g_btn_start = m;
-        g_btn_moved = false;
+    ImGui::SetNextWindowSize(ImVec2(def_w, def_h), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(60.0f * s, 90.0f * s), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Menu-BR — Black Russia", &g_menu_open,
+                      ImGuiWindowFlags_NoCollapse)) {
+        ImGui::End();
+        return;
     }
-    if (io->MouseDown[0] && g_btn_down) {
-        ImVec2 d(m.x - g_btn_start.x, m.y - g_btn_start.y);
-        if (d.x*d.x + d.y*d.y > 64) g_btn_moved = true;
-        if (g_btn_moved) {
-            g_btn_px = ImVec2(m.x, m.y);
-            g_cfg.btn_x = (float)(g_btn_px.x / w);
-            g_cfg.btn_y = (float)(g_btn_px.y / h);
-        }
-    }
-    if (!io->MouseDown[0] && g_btn_down) {
-        g_btn_down = false;
-        if (!g_btn_moved) g_menu_open = !g_menu_open;
-    }
-}
+    g_menu_rmin = ImGui::GetWindowPos();
+    g_menu_rmax = ImVec2(g_menu_rmin.x + ImGui::GetWindowWidth(),
+                         g_menu_rmin.y + ImGui::GetWindowHeight());
 
-/* ---------------- окно-меню ---------------- */
-static void draw_menu(float w, float h)
-{
-    ImGui::SetNextWindowSize(ImVec2(460, 560), ImGuiCond_FirstUseEver);
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse;
-    ImGui::Begin("Menu-BR — Black Russia", &g_menu_open, flags);
     if (ImGui::BeginTabBar("##main", ImGuiTabBarFlags_None)) {
-        if (ImGui::BeginTabItem("Свой"))       { tab_self();     ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("Машины"))     { tab_vehicles(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("Игроки"))     { tab_players();  ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("ESP"))        { tab_esp();      ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("Net"))        { tab_net();      ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("Settings"))   { tab_settings(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("Лог"))        { tab_log();      ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("Свой"))     { tab_self();     ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("Машины"))   { tab_vehicles(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("Игроки"))   { tab_players();  ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("ESP"))      { tab_esp();      ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("Net"))      { tab_net();      ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("Настройки")){ tab_settings(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("Лог"))      { tab_log();      ImGui::EndTabItem(); }
         ImGui::EndTabBar();
     }
     ImGui::End();
 }
 
-static void draw_radar(float w, float h)
+/* ---------------- радар ---------------- */
+static void draw_radar(float s)
 {
     if (!g_radar_open) return;
-    float r = 90.0f;
+    float r = 90.0f * s;
     ImGui::SetNextWindowSize(ImVec2(r * 2 + 24, r * 2 + 24), ImGuiCond_Always);
-    ImGui::SetNextWindowPos(ImVec2(w - r * 2 - 36, 24), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - r * 2 - 36,
+                                   24.0f * s), ImGuiCond_Always);
     ImGui::Begin("ESP##radar", 0,
                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                  ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings);
@@ -516,41 +850,23 @@ static void draw_radar(float w, float h)
 }
 
 /* ---------------- кадр ---------------- */
-void br_ui_init(void)
-{
-    if (g_ctx_ready) return;
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO *io = &ImGui::GetIO();
-    io->IniFilename = NULL; /* не пишем imgui.ini в процесс игры */
-    io->FontDefault = io->Fonts->AddFontDefault();
-    ImGui::StyleColorsDark();
-    ImGuiStyle *st = &ImGui::GetStyle();
-    st->WindowRounding = 8.0f;
-    st->ChildRounding = 6.0f;
-    st->FrameRounding = 6.0f;
-    g_ctx_ready = true;
-}
-
 void br_frame_render_ui(void)
 {
     if (!g_gl.gl_ok) return;
     if (g_gl.eglGetCurrentContext && !g_gl.eglGetCurrentContext())
         return; /* не в GL-контексте */
 
-    if (!g_ctx_ready) br_ui_init();
-
     double now = br_now_ms();
     double dt = g_last_frame_ms ? (now - g_last_frame_ms) : 16.0;
     g_last_frame_ms = now;
-
-    consume_input();
 
     int vp[4] = {0, 0, 1280, 720};
     if (g_gl.glGetIntegerv) g_gl.glGetIntegerv(0x0BA2, vp);
     int w = vp[2] > 0 ? vp[2] : 1280;
     int h = vp[3] > 0 ? vp[3] : 720;
+    float s = ui_scale_now(h);
 
+    if (!g_ctx_ready) br_ui_init_ex(w, h);
     if (!g_uigl_ready) {
         if (br_uigl_init(w, h)) {
             g_uigl_ready = true;
@@ -562,17 +878,21 @@ void br_frame_render_ui(void)
         }
     }
 
+    consume_input();
+
+    ImGui::GetIO().DisplaySize = ImVec2((float)w, (float)h);
+    ImGui::GetStyle().ScaleAllSizes(s);
+    ImGui::GetStyle().Alpha = g_cfg.ui_opacity;
     ImGui::NewFrame();
 
     /* фоновые задачи на GL-треде */
     br_feat_turbo_tick(dt);
     br_feat_drain();
 
-    draw_menu(w, h);
-    draw_radar(w, h);
-
-    /* горячая кнопка — в DrawList ДО Render() */
-    hot_button((float)w, (float)h);
+    draw_pill(w, h, s);
+    if (g_cfg.show_mini_hud) draw_mini_hud(s);
+    if (g_menu_open) draw_menu(w, h, s);
+    draw_radar(s);
 
     ImGui::Render();
     br_uigl_render(w, h);
@@ -580,4 +900,22 @@ void br_frame_render_ui(void)
     static int frame_n = 0;
     if (++frame_n == 1) LOGI("ui: кадр 1 отрисован");
     else if (frame_n % 300 == 0) LOGI("ui: кадров всего %d", frame_n);
+}
+
+/* ---------------- API для хука ввода (16.111) ---------------- */
+bool br_ui_menu_hit(float x, float y)
+{
+    if (!g_ctx_ready) return false;
+    if (g_menu_open &&
+        x >= g_menu_rmin.x && x <= g_menu_rmax.x &&
+        y >= g_menu_rmin.y && y <= g_menu_rmax.y)
+        return true;
+    return x >= g_pill_rmin.x && x <= g_pill_rmax.x &&
+           y >= g_pill_rmin.y && y <= g_pill_rmax.y;
+}
+
+void br_ui_get_btn(float *out_x, float *out_y)
+{
+    if (out_x) *out_x = g_cfg.btn_x;
+    if (out_y) *out_y = g_cfg.btn_y;
 }

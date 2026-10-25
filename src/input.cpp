@@ -33,6 +33,11 @@ static void push(int type, float x, float y, int button, float wheel, int key)
     pthread_mutex_unlock(&g_mtx);
 }
 
+void br_input_feed(int type, float x, float y)
+{
+    push(type, x, y, 0, 0, 0);
+}
+
 int br_input_drain(br_in_ev_t *out, int max)
 {
     int n = 0;

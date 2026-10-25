@@ -67,7 +67,28 @@ static uintptr_t local_ped_addr(uint16_t *id_out)
     int id = g_st.local_id_eff;
     if (id < 0) return 0;
     *id_out = (uint16_t)id;
-    /* через найденный ped-указатель */
+
+    /* 16.111: CLocalPlayer (mgr+0) → CPed* +0x38;
+     * если «локальный» ID переопределён вручную — remote-ветка (mgr+8+id*8 → +0x10) */
+    if (g_st.local_obj) {
+        uint16_t real_id = 0;
+        if (br_safe_read(g_st.local_obj + 0x00, &real_id, 2) && real_id == id) {
+            uint64_t ped = 0;
+            if (br_safe_read(g_st.local_obj + g_st.player_ped_off_local, &ped, 8) && ped)
+                return ped;
+            return 0;
+        }
+        if (g_st.mgr_slots) {
+            uint64_t rp = 0, ped = 0;
+            /* mgr_slots уже указывает на remote-массив (base+glob+8) */
+            if (br_safe_read(g_st.mgr_slots + (uintptr_t)id * 8, &rp, 8) && rp &&
+                br_safe_read(rp + g_st.player_ped_off_remote, &ped, 8) && ped)
+                return ped;
+        }
+        return 0;
+    }
+
+    /* legacy: через найденный ped-указатель */
     if (g_st.player_ped_off) {
         uintptr_t obj = br_state_player_obj(id);
         if (obj) {
@@ -79,6 +100,35 @@ static uintptr_t local_ped_addr(uint16_t *id_out)
     /* через таблицу педов */
     if (g_st.ped_table)
         return g_st.ped_table + (uintptr_t)id * BR_PED_STRIDE;
+    return 0;
+}
+
+/* CVehicle* по net id из пула (16.111: через CNetVehicle*, иначе напрямую) */
+static uintptr_t veh_by_netid(int netid, int *slot_out)
+{
+    if (netid < 0 || netid >= BR_MAX_VEHICLES || !g_st.pool_table) return 0;
+    if (g_st.pool_v2) {
+        for (int i = 0; i < BR_MAX_VEHICLES; i++) {
+            uint64_t nv = 0, gv = 0;
+            if (!br_safe_read(g_st.pool_table + (uintptr_t)i * 8, &nv, 8) || !nv) continue;
+            if (!br_safe_read(nv, &gv, 8) || !gv) continue;
+            uint16_t id = 0;
+            if (br_safe_read(gv + 0x434, &id, 2) && id == (uint16_t)netid) {
+                if (slot_out) *slot_out = i;
+                return gv;
+            }
+        }
+        return 0;
+    }
+    for (int i = 0; i < BR_MAX_VEHICLES; i++) {
+        uint64_t w = 0;
+        if (!br_safe_read(g_st.pool_table + (uintptr_t)i * 8, &w, 8) || !w) continue;
+        uint16_t id = 0;
+        if (br_safe_read(w, &id, 2) && id == (uint16_t)netid) {
+            if (slot_out) *slot_out = i;
+            return w;
+        }
+    }
     return 0;
 }
 
@@ -162,6 +212,41 @@ static void do_color(const float *rgb)
         LOGI("color: id=%d rgb=(%.2f,%.2f,%.2f)", id, rgb[0], rgb[1], rgb[2]);
 }
 
+/* 16.111: HP/Armor — CPed +0x4B0/+0x4B8 (f32) */
+static void do_heal(float hp, float armor)
+{
+    uint16_t id = 0;
+    uintptr_t ped = local_ped_addr(&id);
+    if (!ped) { LOGE("heal: локальный пед не найден"); return; }
+    br_safe_write(ped + 0x4B0, &hp, 4);
+    br_safe_write(ped + 0x4B8, &armor, 4);
+    LOGI("heal: id=%d hp=%.0f armor=%.0f", id, hp, armor);
+}
+
+/* 16.111: сесть в машину из пула по net id:
+ * ped+0x540 = CVehicle*, ped+0x548 = 1, CVehicle+0xB8 = ped;
+ * локальному игроку дополнительно CLocalPlayer+0x40 = CVehicle* */
+static void do_enter_netid(int netid)
+{
+    uint16_t id = 0;
+    uintptr_t ped = local_ped_addr(&id);
+    if (!ped) { LOGE("enter: локальный пед не найден"); return; }
+    int slot = -1;
+    uintptr_t veh = veh_by_netid(netid, &slot);
+    if (!veh) { LOGE("enter: машина netid=%d не найдена в пуле", netid); return; }
+
+    br_safe_write(ped + 0x540, &veh, 8);
+    uint8_t flag = 1;
+    br_safe_write(ped + 0x548, &flag, 1);
+    br_safe_write(veh + 0xB8, &ped, 8);
+    if (g_st.local_obj) {
+        uint64_t local = g_st.local_obj;
+        br_safe_write(local + 0x40, &veh, 8); /* CLocalPlayer+0x40 = CVehicle* */
+    }
+    LOGI("enter: игрок %d -> veh netid=%d (slot=%d)", id, netid, slot);
+    g_have_prev = 0;
+}
+
 /* ---------- очередь ---------- */
 
 void br_feat_drain(void)
@@ -191,6 +276,13 @@ void br_feat_drain(void)
         case FEAT_SPAWN:       if (c.len >= 4) do_spawn(*(const int *)c.args); break;
         case FEAT_ENTER_SPAWNED: do_enter_spawned(); break;
         case FEAT_SET_COLOR:   if (c.len >= 12) do_color((const float *)c.args); break;
+        case FEAT_HEAL: {
+            float hp = 100.0f, ar = 100.0f;
+            if (c.len >= 8) { hp = ((const float *)c.args)[0]; ar = ((const float *)c.args)[1]; }
+            do_heal(hp, ar);
+            break;
+        }
+        case FEAT_ENTER_NETID: if (c.len >= 4) do_enter_netid(*(const int *)c.args); break;
         case FEAT_RESCAN:      br_detect_rerun(); break;
         default: break;
         }
@@ -212,9 +304,35 @@ int   br_feat_turbo_on(void)   { return g_turbo_on; }
 float br_feat_turbo_mult(void) { return g_turbo_mult; }
 uintptr_t br_feat_last_spawned(void) { return g_spawned_veh; }
 
+/* 16.111: скорость машины = CVehicle+0x180 f32[3].
+ * Стратегия: удерживаем курс и скорость S = max(старт, 15) × mult (cap 90 м/с). */
+static float g_turbo_base_speed = 0;
+static double g_turbo_veh_t = 0;
+
+static void turbo_tick_16111(void)
+{
+    int id = g_st.local_id_eff;
+    if (id < 0) return;
+    uintptr_t veh = br_state_player_veh(id);
+    if (!veh) { g_turbo_base_speed = 0; return; }
+
+    float vel[3] = {0, 0, 0};
+    if (!br_readf(veh + 0x180, vel, 3)) return;
+    float m = (float)sqrt(vel[0]*vel[0] + vel[1]*vel[1] + vel[2]*vel[2]);
+    if (m < 0.5f) { g_turbo_base_speed = 0; return; } /* стоим — не толкаем */
+    if (!g_turbo_base_speed) g_turbo_base_speed = m;   /* фиксируем при включении */
+
+    float s = g_turbo_base_speed * g_turbo_mult;
+    if (s > 90.0f) s = 90.0f;
+
+    vel[0] *= s / m; vel[1] *= s / m; vel[2] *= s / m;
+    br_safe_write(veh + 0x180, vel, 12);
+}
+
 void br_feat_turbo_tick(double dt_ms)
 {
-    if (!g_turbo_on) { g_have_prev = 0; return; }
+    if (!g_turbo_on) { g_have_prev = 0; g_turbo_base_speed = 0; return; }
+    if (g_st.pool_v2) { turbo_tick_16111(); return; }
     int id = g_st.local_id_eff;
     if (id < 0) return;
     float pos[3];

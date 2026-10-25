@@ -21,6 +21,7 @@ void br_cfg_init(void)
     g_cfg.show_vehicles= true;
     g_cfg.show_labels  = true;
     g_cfg.show_north   = true;
+    g_cfg.show_mini_hud = true;
     g_cfg.local_id     = -1;
     g_cfg.turbo_on     = false;
     g_cfg.turbo_mult   = 5.0f;
@@ -96,7 +97,7 @@ void br_cfg_load(void)
             #define GETB(name) if (strcmp(k, #name) == 0) g_cfg.name = (atoi(v) != 0)
             GETI(build); GETF(ui_opacity); GETF(menu_scale); GETF(radar_range);
             GETI(esp_blip); GETB(show_players); GETB(show_vehicles);
-            GETB(show_labels); GETB(show_north); GETI(local_id);
+            GETB(show_labels); GETB(show_north); GETB(show_mini_hud); GETI(local_id);
             GETB(turbo_on); GETF(turbo_mult); GETF(btn_x); GETF(btn_y); GETI(log_level);
             #undef GETI
             #undef GETF
@@ -122,6 +123,7 @@ void br_cfg_save(void)
     fprintf(f, "show_vehicles=%d\n", g_cfg.show_vehicles ? 1 : 0);
     fprintf(f, "show_labels=%d\n", g_cfg.show_labels ? 1 : 0);
     fprintf(f, "show_north=%d\n", g_cfg.show_north ? 1 : 0);
+    fprintf(f, "show_mini_hud=%d\n", g_cfg.show_mini_hud ? 1 : 0);
     fprintf(f, "local_id=%d\n", g_cfg.local_id);
     fprintf(f, "turbo_on=%d\n", g_cfg.turbo_on ? 1 : 0);
     fprintf(f, "turbo_mult=%.1f\n", g_cfg.turbo_mult);

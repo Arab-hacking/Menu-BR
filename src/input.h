@@ -24,6 +24,9 @@ typedef struct {
     int      key;      /* ImGuiKey */
 } br_in_ev_t;
 
+/* Внешний ввод (хук JNILib_multiTouchEvent, 16.111). Вызывать из GL-треда. */
+void br_input_feed(int type, float x, float y);
+
 void br_input_start(void);
 void br_input_stop(void);
 

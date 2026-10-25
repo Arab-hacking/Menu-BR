@@ -59,4 +59,16 @@ int  br_find_player_veh_off(uintptr_t player_obj);
 /* Найти смещение CPed* в объекте игрока. */
 int  br_find_player_ped_off(uintptr_t player_obj, uint16_t veh_id);
 
+/* ---- 16.111 (модель: CPlayerPool + CPed-указатели + CNetVehicle-обёртки) ---- */
+
+/* CPlayerPool: +0 = CLocalPlayer* (ID +0x00, CPed* +0x38), +0x08+id*8 = CRemotePlayer*
+ * (CPed* +0x10, ID +0x4A). Валидна если локальный игрок читается и у него
+ * валидная позиция CPed+0x38. Возвращает объект локального игрока. */
+bool br_validate_local16111(uintptr_t player_pool_glob, uintptr_t *local_obj_out);
+
+/* VehiclePool 16.111: слот = CNetVehicle* (+0 = CVehicle*); CVehicle:
+ * netID +0x434 (u16 < 2000), класс +0x430 (0..12). */
+bool br_pool_plausible_v2(uintptr_t pool_glob, uintptr_t *table_out);
+int  br_pool_valid_v2(uintptr_t pool_glob); /* число валидных машин (0 = пусто) */
+
 #endif
