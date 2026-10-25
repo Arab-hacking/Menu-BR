@@ -1,131 +1,135 @@
 # Menu-BR
 
-Инжектируемый ImGui-меню (`.so`) для **Black Russia** (`libblackrussia-client.so`,
-Android ARM64). Оверлей рисуется поверх игры через PLT-хук на `glDrawElements`,
-данные читаются из памяти игры через безопасные чтения с проверкой маппингов.
+Инжектируемый ImGui-меню (`.so`) для **Black Russia**
+(`libblackrussia-client.so`, Android ARM64).
 
-Поддерживаемые сборки (автоопределение по build-id):
+**База (текущая, 3-й виток): проект `br_imgui_inspector_16.111.19050`**
+(полностью автономный Dear ImGui 1.90.9, Standalone OpenGL ES 3.0)
+скопирован в `inspector/` без изменений + добавлен модуль функций мода
+(`inspector/src/mod_features.*`) — вкладка **«0. MOD (действия)»**:
+телепорт, лечилка, посадка в машину, турбо.
 
 | Сборка | build-id | Статус |
 |---|---|---|
-| **16.111.19050** | `2b301eb3b52fe709056c59e22e214775027674dd` | полная (функции-хуки JNILib, net-монитор) |
-| **16.110.18323** | `805be086548eb236ee469e88c11d5d3e66cfe1ba` | полная (бестинарник в `reference/`, сверено) |
-| **16.106.17587** | — | из RE-документации + структурные пробы |
+| **16.111.19050** | `2b301eb3b52fe709056c59e22e214775027674dd` | активная база (inspector-проект) |
+| 16.110.18323 / 16.106.17587 | — | legacy-вариант в `src/` (см. `./build.sh legacy-zig`), поддержка отложена |
 
-Для **16.111** офсеты взяты из RE-анализа новой сборки и подтверждены
-рабочим device-инспектором; бинарника 16.111 в репо нет, поэтому таблица
-защищена build-id guard + валидационными пробами в рантайме. Для
-**16.110.18323** все адреса и сигнатуры в `src/off.cpp` сверены с бинарником
-(см. `tools/host_test.cpp`, `make test`); для **16.106.17587** — таблица из
-RE-документации + структурные пробы.
+Инспектор настраивается по build-id: точное совпадение — полный режим,
+отличие — диагностический режим (меню работает, офсеты валидируются).
 
 ---
 
 ## Возможности
 
-| Элемент | Что делает |
-|---|---|
-| **Pill-бейдж** | Плавающая кнопка «BR» (перетаскивается): открыть/скрыть меню, вкл/выкл мини-HUD, FPS, счётчики игроков/машин. |
-| **Мини-HUD** | Постоянная панель: ID/ник локального игрока, HP/Armor (16.111), XYZ, скорость, авто, онлайн, ping/MTU/статус сети. |
-| **Свой** | Карточка локального игрока (ID, ник, HP/Armor, скорость, позиция, авто). **Лечить (HP/Armor=100)** (16.111: `CPed+0x4B0/+0x4B8`). Локальный ID: «авто» или вручную. Телепорт по координатам (запись в `CPed+0x38..0x40`). Турбо-ускорение (16.111: удержание скорости `vel` в `CVehicle+0x180`; legacy: step-метод). Цвет (таблица цветов, 16.110/16.106). |
-| **Машины** | Пул из 2000 машин (`net id`, класс, водитель, дистанция, скорость). Телепорт к машине, **«Сесть»** (16.111: `ped+0x540=veh`, `veh+0xB8=ped`, флаг `+0x548`), двигатель ON/OFF (16.106), «создать» (16.106, экспериментально). |
-| **Игроки** | Список игроков (1504 слота): ID, ник (16.111), состояние, машина, дистанция, скорость. Телепорт к игроку, «сделать локальным». |
-| **ESP** | 2D-радар (миникарта): игроки и машины вокруг, дальность 50–2000 м, размер блипов, подписи (id/скорость), север. |
-| **Net** | **16.111**: живой монитор исходящей сети (function-хуки `RakClient Send`/`RPC`): ping/MTU/статус, счётчики по ID (raw 27–39, RPC 314–441), последние события с hex-заголовками, справочник протокола. **16.110**: сэмплирующий sync-монитор по ID (30/32/33/34/38/39/11) через глобал `packetId @ 0x49C698`. Ручные адреса (legacy). |
-| **Настройки** | Сборка: Auto / 16.106 / 16.110 / 16.111 / Custom. Прозрачность, масштаб UI (0 = авто по высоте экрана). Лог: уровень, в файл. Сохранение (`/sdcard/Android/data/com.br.top/files/brmenu/config.txt`), сброс, Rescan, выключение. |
-| **Лог** | Цветной лог работы (E — красный, W — жёлтый). |
+Вкладки инспектора (база — проект `br_imgui_inspector_16.111.19050`):
 
-Отправку RPC **нет** (BitStream-макет отправляющего пакета по имеющимся данным
-не восстанавливается) — вкладка Net показывает только исходящие пакеты (монитор)
-и справочник.
+| Вкладка | Что показывает |
+|---|---|
+| **0. MOD (действия)** | **Наши функции мода**: лечилка (HP/Armor=100), телепорт по X/Y/Z (или «тек. позиция»), турбо (множитель 1.5–8x, скорость фиксируется при включении), список машин VehiclePool (2000) с кнопками **«Въехать»**/«Телепорт», список игроков PlayerPool с «Телепорт». |
+| 1. Модуль и ImGui | Base модуля, Build-ID (OK/отличается), версии встроенного/собственного ImGui, хуки. |
+| 2. LocalPlayer и CPed | Полная разкладка `CLocalPlayer`/`CPed` (id, ник, ped/veh указатели, HP-like, позиция, кэш пакетов 30/33). |
+| 3. PlayerPool (1504) | Все слоты игроков: id, ник, состояние, машина, aux-поля; поиск и фильтры. |
+| 4. VehiclePool (2000) | Все машины: net/game указатели, id, класс, позиция, скорость, backref; фильтры. |
+| 5. Сеть: Пакеты и RPC | **Живой net-монитор** (пассивные хуки `RakClient Send`/`RPC`): ping/MTU/статус, последние события с hex, справочник raw-пакетов (27–39) и RPC (314–441). |
+| 6. Память и Карта VA | Read-only hex-инспектор памяти + карта VA модуля. |
+
+Навигация: pill-бейдж (плавающая кнопка) — открыть/закрыть меню, мини-HUD;
+ввод — касания через хук `JNILib_multiTouchEvent` (тап/перетаскивание;
+клики по окнам UI не проходят в игру, UP всегда проходит).
+
+Все действия мода пишут только в игровые структуры (`CPed`/`CVehicle`/
+`CLocalPlayer`) через `process_vm_writev` (ядро отвечает EFAULT вместо
+SIGSEGV при невалидной странице); все чтения — read-only.
 
 ## Управление
 
-- **16.111**: ввод — через хук `JNILib_multiTouchEvent` (тап/движение первого
-  палца = мышь); клики по открытому окну меню не проходят в игру
-  (swallow). AInputQueue не используется.
-- **16.110/16.106**: ввод — AInputQueue (тап/перетаскивание, два пальца —
-  колесо, клавиатура — для InputText).
-- **Pill-бейдж** (перетаскивается, позиция сохраняется) — открыть/закрыть
-  меню, вкл/выкл мини-HUD.
+- Ввод — через хук `JNILib_multiTouchEvent` (`0x01902270`): тап/движение
+  первого пальца = мышь; клики по окнам меню не проходят в игру (capture),
+  UP/CANCEL всегда проходят (не залипает управление).
+- **Pill-бейдж** (перетаскивается) — открыть/закрыть меню, вкл/выкл мини-HUD.
+- Slider «Опрос (мс)» — интервал обновления снимков пулов (по умолчанию 150).
 
 ## Как устроено
 
-1. **Загрузка.** `dlopen("libmenu-br.so")` + `MenuBR_Init()`, либо
-   `System.loadLibrary("menu-br")` (тогда инициализация сама по `JNI_OnLoad`).
-   Библиотека **не объявляет NEEDED** (только бionic-символы из глобальной
-   области видимости процесса) и **не импортирует GL/EGL/android API** —
-   всё берётся через `dlopen/dlsym` в рантайме (`src/glapi.cpp`).
-2. **Определение сборки** (`src/detect.cpp`): build-id из
-   `.note.gnu.build-id`, затем таблица адресов + структурные пробы
-   (заголовки функций, глобалы из `.rela.dyn`) + сигнатурные сканы
-   (`GetByNetId`, диспетчер синхронизации). Для неизвестной сборки — Custom:
-   адреса вбиваются вручную во вкладке Net.
-3. **Хуки кадра и ввода** (16.111 — по принципу device-инспектора, который
-   работает на устройстве):
-   - **16.111** (`src/func_hook.cpp`): function-хуки (ARM64, 16-байтный
-     перехват с релокацией ADRP/ADR/B/BL в MOVZ/MOVK, трэмплин в RWX-mmap,
-     абсолютный прыжок `ldr x17; br x17`). Точки:
-     - `JNILib_step` (`0x01901D44`) — рендер оверлея после кадра игры;
-     - `eglSwapBuffers` (libEGL) — второй, гарантированный рендер-триггер
-       сразу перед презентацией (рабочий вариант даже если игра швепает
-       внутри step; re-entrancy guard защищает от вложенности);
-     - `JNILib_multiTouchEvent` (`0x01902270`) — ввод (тап = мышь, два
-       пальца = колесо) + capture-стейт-машина: клики по окнам UI не
-       проходят в игру, UP всегда проходит (не залипает джойстик);
-     - `RakClient Send`/`RPC` (thunks `0x01A513B8`/`0x01A51AC8`) —
-       net-монитор (`src/netmon.cpp`), ring 512 + счётчики, без влияния
-       на геймплей.
-   - **ImGui-рендер** (`src/ui_gl.cpp` + официальный
-     `third_party/imgui/backends/imgui_impl_opengl3`, ES3): собственный
-     изолированный ImGui-контекст (без зависимости от встроенного в игру
-     GImGui), save/restore FBO + color/depth writemask вокруг отрисовки,
-     принудительный `glBindFramebuffer(0)` (игра может рисовать в FBO),
-     ресоз GL-ресурсов при смене EGL-контекста, размер поверхности —
-     `eglQuerySurface` → BSS-глобал `0x03C0FAD8` → viewport.
-   - **16.110/16.106** (`src/hooks.cpp`): PLT-хук в стабе `glDrawElements`
-     (fallback `glClear` → `glDrawArrays`) — переписывается только последний
-     `br x17` на `b <trampoline>` (GOT не трогаем — без гонок).
-4. **Чтение памяти** (`src/mem.cpp`): все чтения только после проверки
-   диапазона в кэше `/proc/self/maps` — при вылетевшем указателе игра не
-   падает (возвращаем 0/«не найдено»).
-5. **Ввод** (`src/input.cpp`): 16.111 — события из хука multiTouchEvent
-   (`br_input_feed`); 16.110/16.106 — `eglGetCurrentSurface` →
-   `ANativeWindow_getInputQueue` → тред опроса AInputQueue.
-   Оба пути сливаются в одну очередь → ImGuiIO.
-6. **C++ runtime** (`src/rt_shim.c`): ImGui 1.91 — C++, поэтому библиотека
-   собраны с `-fno-exceptions -fno-rtti`, а `operator new/delete`,
-   `terminate`, `__cxa_pure_virtual`, `__cxa_atexit` предоставляет сам shim —
-   импорты libc++ не нужны.
+1. **Загрузка и self-start.** `dlopen("libmenu-br.so")` →
+   `__attribute__((constructor))` в `inspector/src/main_entry.cpp` стартует
+   фоновый тред (или `br_inspector_init()`/`MenuBR_Init()` вручную —
+   идемпотентно). Тред ждёт появления `libblackrussia-client.so`
+   (`dl_iterate_phdr`, 150×100 мс), читает build-id из `.note.gnu.build-id`.
+2. **Хуки** (`inspector/src/internal_imgui_bridge.cpp`, ARM64 inline-hook с
+   релокацией ADRP/ADR/B/BL и RWX-трамплином, `arm64_hook.cpp`):
+   - `JNILib_step` (`0x01901D44`, dlsym → fallback VA) — точка кадра:
+     оригинал → рендер собственного ImGui;
+   - `eglSwapBuffers` (libEGL, резервный триггер) — рендер перед презентацией;
+   - `JNILib_multiTouchEvent` (`0x01902270`) — ввод + capture-стейт-машина;
+   - пассивные хуки `RakClient Send`/`RPC` для net-монитора (вкладка Сеть).
+3. **Рендер** (Dear ImGui **1.90.9** + официальный `imgui_impl_opengl3`,
+   ES3, **собственный изолированный ImGui-контекст** — без зависимости от
+   встроенного в игру GImGui): шрифт — системный Roboto/Noto с кириллицей
+   (`OversampleH=2`), размер от `eglQuerySurface` (fallback — BSS-глобал
+   `0x03C0FAD8`), save/restore FBO + color/depth writemask вокруг отрисовки,
+   принудительный `glBindFramebuffer(0)`, reinit GL-ресурсов при смене
+   EGL-контекста, reentrancy-guard.
+4. **Чтение** (`inspector/src/game_reader.cpp` + `safe_memory.cpp`):
+   `process_vm_readv` (ядро — EFAULT вместо SIGSEGV), снимок мира каждые
+   N мс (локальный игрок, пулы 1504/2000, RakClient-статус при валидном
+   vtable `0x02140BF0`).
+5. **Функции мода** (`inspector/src/mod_features.cpp`, наша надстройка):
+   - **запись** — `process_vm_writev` с той же проверкой адресов
+     (Top-Byte-Ignore, диапазон user-памяти);
+   - **телепорт** — позиция машины (`LocalPlayer+0x40`), если игрок за
+     рулём, иначе `CPed+0x38..0x40`;
+   - **лечилка** — `CPed+0x4B0/+0x4B8 = 100`;
+   - **посадка** — `ped+0x540=veh`, `LocalPlayer+0x40=veh`, флаг
+     `ped+0x548=1`, backref `veh+0xB8=ped`, подстановка пед к машине;
+   - **турбо** — per-frame тик из рендер-колбэка: `CVehicle+0x180`
+     (vel) масштабируется к `base_speed × mult` в текущем направлении.
+6. **Лог.** Strong-символ `__android_log_print`
+   (`inspector/src/android_log_shim.cpp`) — пишет
+   `/sdcard/Android/data/com.br.top/files/brmenu.log` (вращение 1 МБ →
+   `.log.old`) и best-effort форвардит в logcat через `dlopen("liblog.so")`.
+   Поэтому NEEDED `liblog.so` не нужен.
+7. **C++ runtime.** `-fno-exceptions -fno-rtti`; `operator new/delete`,
+   `__cxa_atexit` — `src/rt_shim.c`; out-of-line std::thread/mutex/chrono/
+   string-методы и `__cxa_guard_*` — `inspector/src/rt_compat.cpp`
+   (над pthread), sized delete — `inspector/src/rt_compat_c.c`.
 
 ## Сборка
 
 ### 1) Zig (кросс-компиляция без NDK — как в этом репо)
 
 ```sh
-ZIG=/path/to/zig ./build.sh zig     # → build/libmenu-br.so (aarch64)
+ZIG=/path/to/zig ./build.sh zig          # → build/libmenu-br.so (aarch64)
+ZIG=/path/to/zig ./build.sh legacy-zig   # → build/libmenu-br-legacy.so (старый src/)
 ```
 
-В песочнице репо: `/tmp/zig15/lib/python3.11/site-packages/ziglang/zig`
-(zig 0.15.2, ставится `pip install ziglang`). Компиляция идёт с glibc-
-хедерами, но линковка — без libc: в `.so` **нет NEEDED**, все 58 UNDEF-
-символов — стандартные bionic (`malloc`, `mmap`, `pthread_*`, `dlopen`…).
+Зиг 0.15.2 (pip `ziglang`). Компиляция — glibc-хедеры + shim-хедеры
+Android API (`tools/shim_include`: `android/log.h`, `jni.h`, `EGL/egl.h`,
+`GLES3/gl3.h`, `link.h`, `xlocale.h`, `android/api-level.h`), критично
+`-D__ANDROID__` (ветвление кода инспектора) и `-DIMGUI_IMPL_OPENGL_ES3`.
+Двухпроходная линковка: pass1 собирает UND-список, `tools/gen_fake_libs.py`
+классифицирует его по таблицам экспортов bionic (libc/libm/libdl) +
+OpenGL ES 3.0/EGL, pass2 линкует stub'и → **NEEDED = {libc.so, libm.so,
+libdl.so, libGLESv3.so, libEGL.so}** (всё есть в namespace процесса игры).
 
 ### 2) Android NDK (альтернатива)
 
 ```sh
 export NDK=$HOME/Android/Sdk/ndk/28.2.13004772
-cmake -B build/ndk -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
+cd inspector
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
       -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DCMAKE_BUILD_TYPE=Release
-cmake --build build/ndk                    # → build/ndk/libmenu-br.so
+# + добавить в CMakeLists: src/mod_features.cpp, src/android_log_shim.cpp,
+#   src/entry_compat.cpp (и rt_shim для operator new, если без libc++)
+cmake --build build
 ```
 
 ### 3) Хост-тест (x86_64, без телефона)
 
 ```sh
-make test   # компилирует src/ для хоста, проверяет ELF/PLT/сигнатуры
-            # на reference/libblackrussia-client.so (16/16 PASS)
+make test   # ELF/PLT/сигнатуры на reference/libblackrussia-client.so (16/16)
 GAME_SO=/другой/путь/libblackrussia-client.so make test   # другая сборка
+python3 tools/audit_bionic.py build/libmenu-br.so  # аудит NEEDED/UND
 ```
 
 ## Использование на устройстве
@@ -137,42 +141,47 @@ int (*init)(void) = dlsym(h, "MenuBR_Init");
 init();
 ```
 
-или из Java: `System.loadLibrary("menu-br")` (копия .so в `lib/arm64-v8a/`,
-именнованная `libmenu-br.so`).
+Или любой загрузщик (smali-хук): self-start срабатывает сам —
+`__attribute__((constructor))` в `main_entry.cpp` стартует фоновый тред при
+`dlopen`, `MenuBR_Init()` нужен только для ручной/повторной инициализации.
 
-Остановка: `MenuBR_Shutdown()` — снимает хуки, останавливает треды,
-вызывает `__cxa_finalize` для статических объектов.
+Остановка: `MenuBR_Shutdown()` — снимает хуки (`Arm64Hook::RemoveAll`),
+ставит флаг остановки фоновых тредам.
 
 ## Структура
 
 ```
-include/brmenu.h          публичный API (MenuBR_Init/Shutdown/IsActive)
-src/
-  br_common.h             общие определения, константы структур
-  mem.h/.cpp              safe-чтения, кэш /proc/self/maps
-  br_elf.h / elf.cpp      разбор ELF процесса (dynsym, .rela.plt, build-id, scan)
-  off.h/.cpp              таблицы адресов 16.106 / 16.110 + сигнатуры
-  detect.h/.cpp           определение сборки (build-id + пробы + сканы)
-  probe.h/.cpp            структурные пробы (валидация таблиц, v2 для 16.111)
-  state.h/.cpp            состояние мира (игроки/машины/локальный игрок)
-  feat.h/.cpp             функции: телепорт, посадка, heal, спавн, цвета, turbo
-  func_hook.h/.cpp        ARM64 function-хуки с релокацией (16.111)
-  netmon.h/.cpp           net-монитор (хуки Send/RPC, ping/MTU) — 16.111
-  cfg.h/.cpp              настройки + сохранение/загрузка
-  log.cpp                 лог (файл + кольцо для вкладки «Лог»)
-  glapi.h/.cpp            все GL/EGL/android функции через dlopen/dlsym
-  hooks.h/.cpp            PLT-хуки + трамплины (16.110/16.106)
-  input.h/.cpp            ввод: AInputQueue / feed из хука тапа (16.111)
-  ui_gl.h/.cpp            собственный backend Dear ImGui (ES3)
-  ui_menu.h/.cpp          pill + мини-HUD + 7 вкладок (тёмная тема, ui_scale)
-  ui_esp.h/.cpp           2D-радар
-  main.cpp                точка входа, JNI_OnLoad, хуки (PLT / JNILib)
-  jnistub.h               минимальные JNI-типы (без <jni.h>)
-  rt_shim.c               shim C++-рантайма (operator new/delete и т.д.)
-third_party/imgui/        Dear ImGui v1.91.9b (MIT)
-reference/                бинарник 16.110.18323 + RE-документация (артефакты)
-tools/host_test.cpp       хост-тест ELF/PLT/сигнатур
-build.sh                  zig-сборка; CMakeLists.txt/Makefile — обёртки
+inspector/                  БАЗА: проект br_imgui_inspector_16.111.19050 (без изменений)
+  include/
+    br_offsets_16_111_19050.hpp  все VA/офсеты 16.111 (build-id 2b301eb3…)
+    arm64_hook.hpp           ARM64 inline-hook API
+    game_reader.hpp          read-only снимки (LocalPlayer/Remote/Vehicle/RakNet)
+    internal_imgui_bridge.hpp свой ImGui-контекст + хуки кадра/тача
+    network_catalog.hpp      каталог пакетов/RPC + пассивный observer
+    inspector_menu.hpp       7 вкладок UI
+    safe_memory.hpp          SafeMemory (process_vm_readv)
+  src/
+    main_entry.cpp           self-start (constructor), br_inspector_* C-API
+    internal_imgui_bridge.cpp  AttachStandaloneRenderer, хуки, touch-очередь
+    game_reader.cpp          CaptureSnapshot
+    inspector_menu.cpp       рендер вкладок
+    network_catalog.cpp      каталог + observer Send/RPC
+    arm64_hook.cpp           трэмплины с релокацией
+    safe_memory.cpp          process_vm_readv
+    mod_features.cpp         НАШЕ: телепорт/лечилка/посадка/турбо (+SafeWrite)
+    android_log_shim.cpp     НАШЕ: __android_log_print → brmenu.log + logcat
+    entry_compat.cpp         НАШЕ: MenuBR_* обёртки (smali-совместимость)
+    rt_compat.cpp            НАШЕ: std::thread/mutex/chrono/string/cxa_guard
+    rt_compat_c.c            НАШЕ: sized operator delete (hidden)
+  third_party/imgui/         Dear ImGui v1.90.9 + impl_opengl3 (их копия)
+src/                        LEGACY (2-й виток): свой imgui 1.91.9b + PLT-хуки
+                            (./build.sh legacy-zig; история git — полный путь)
+tools/shim_include/         shim-хедеры Android API для zig (log/jni/EGL/GL/link)
+tools/gen_fake_libs.py      классификация UND → bionic/GLESv3/EGL stub'и
+tools/audit_bionic.py       аудит NEEDED/UND под bionic-линкер
+tools/host_test.cpp         хост-тест ELF/PLT/сигнатур
+build.sh                    zig-сборка (zig | legacy-zig)
+reference/                  бинарник 16.110.18323 + RE-документация
 ```
 
 ## Адреса (VA внутри .so; base + VA = адрес в процессе)

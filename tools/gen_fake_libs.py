@@ -28,6 +28,8 @@ def main():
         "libc": load(os.path.join(here, "bionic_libc_syms.txt")),
         "libm": load(os.path.join(here, "bionic_libm_syms.txt")),
         "libdl": load(os.path.join(here, "bionic_libdl_syms.txt")),
+        "libGLESv3": load(os.path.join(here, "glesv3_syms.txt")),
+        "libEGL": load(os.path.join(here, "egl_syms.txt")),
     }
 
     names = []
@@ -41,8 +43,8 @@ def main():
     buckets = {lib: [] for lib in libs}
     bad = []
     for n in names:
-        # приоритет: libm (математика специфичнее) -> libdl -> libc
-        for lib in ("libm", "libdl", "libc"):
+        # приоритет: libm (математика специфичнее) -> libdl -> libc -> GLESv3 -> EGL
+        for lib in ("libm", "libdl", "libc", "libGLESv3", "libEGL"):
             if n in libs[lib]:
                 buckets[lib].append(n)
                 break

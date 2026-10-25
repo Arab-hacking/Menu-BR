@@ -70,17 +70,27 @@ jobs:
               *) echo "ERROR: нет NEEDED libc.so"; rc=1 ;;
             esac
             for n in $need_names; do
-              case "$n" in libc.so|libm.so|libdl.so) : ;;
-              *) echo "ERROR: NEEDED вне bionic: $n"; rc=1 ;;
+              case "$n" in libc.so|libm.so|libdl.so|libGLESv3.so|libEGL.so) : ;;
+              *) echo "ERROR: NEEDED вне bionic+GL: $n"; rc=1 ;;
               esac
             done
             [ $rc -eq 0 ] && echo "OK: NEEDED корректны"
             exp=$(readelf --dyn-syms -W "$SO" | awk '$5=="GLOBAL" && $7 ~ /^[0-9]+$/ {print $8}' | sort -u | tr '\n' ' ')
             echo "exports: ${exp}"
-            if [ "$exp" != "JNI_OnLoad MenuBR_Init MenuBR_IsActive MenuBR_Shutdown " ]; then
-              echo "ERROR: unexpected exports: ${exp}"
+            # Ожидаемый набор: 3 MenuBR_* (smali-совместимость) + 4 br_inspector_*
+            # (C-API референса). Self-start — через constructor в main_entry.cpp.
+            for want in MenuBR_Init MenuBR_IsActive MenuBR_Shutdown \
+                        br_inspector_init br_inspector_shutdown br_inspector_set_hook_backend br_inspector_feed_touch; do
+              case " $exp " in
+                *" $want "*) : ;;
+                *) echo "ERROR: нет экспорта $want"; rc=1 ;;
+              esac
+            done
+            nexp=$(echo $exp | wc -w)
+            if [ "$nexp" -ne 7 ]; then
+              echo "ERROR: ожидаю ровно 7 экспортов, а есть $nexp: ${exp}"
               rc=1
-            else
+            elif [ $rc -eq 0 ]; then
               echo "OK: экспорт корректен"
             fi
           } > /tmp/stage.log 2>&1

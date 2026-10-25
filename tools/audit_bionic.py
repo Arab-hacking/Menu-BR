@@ -2,8 +2,12 @@
 """audit_bionic.py — статическая проверка .so под bionic-линкер.
 
 Проверяет ровно то, что ломает dlopen на устройстве:
-  1. все UND-символы .so экспортируются bionic (libc ∪ libm  libdl, AOSP map'ы);
-  2. DT_NEEDED ⊆ {libc.so, libm.so, libdl.so} (есть в любом процессе игры).
+  1. все UND-символы .so экспортируются bionic (libc ∪ libm  libdl, AOSP map'ы)
+     или Android GL-стеком (libGLESv3 ∪ libEGL — всегда в namespace игры,
+     игра сама рисует GL поверх GLSurfaceView);
+  2. DT_NEEDED ⊆ {libc.so, libm.so, libdl.so, libGLESv3.so, libEGL.so}.
+     (liblog.so НЕ требуется: __android_log_print — strong-символ в .so,
+     пишет в /sdcard/Android/data/com.br.top/files/brmenu.log.)
 
 Использование:  python3 tools/audit_bionic.py build/libmenu-br.so
 Выход: 0 = ок, 1 = есть проблемы (списывается), 2 = ошибка парсинга.
@@ -49,8 +53,12 @@ def main():
     so = sys.argv[1]
     here = os.path.dirname(os.path.abspath(__file__))
     bionic = set()
-    for lib in ("libc", "libm", "libdl"):
-        with open(os.path.join(here, f"bionic_{lib}_syms.txt")) as f:
+    for lib, prefix in (("libc", "bionic_libc_syms.txt"),
+                        ("libm", "bionic_libm_syms.txt"),
+                        ("libdl", "bionic_libdl_syms.txt"),
+                        ("libGLESv3", "glesv3_syms.txt"),
+                        ("libEGL", "egl_syms.txt")):
+        with open(os.path.join(here, prefix)) as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#"):
@@ -63,16 +71,17 @@ def main():
     missing = sorted(n for n in und if n not in bionic and n not in defined)
     if missing:
         fail = 1
-        print("FAIL: UND-символы, которых НЕТ в bionic libc/libm/libdl (dlopen упадёт):")
+        print("FAIL: UND-символы, которых НЕТ в bionic + GLESv3 + EGL (dlopen упадёт):")
         for n in missing:
             print("   ", n)
     else:
-        print(f"OK: все {len(und)} UND-символов экспортируются bionic (libc/libm/libdl)")
+        print(f"OK: все {len(und)} UND-символов экспортируются bionic/libGLESv3/libEGL")
 
-    bad_need = [n for n in need if n not in ("libc.so", "libm.so", "libdl.so")]
+    allowed_need = {"libc.so", "libm.so", "libdl.so", "libGLESv3.so", "libEGL.so"}
+    bad_need = [n for n in need if n not in allowed_need]
     if bad_need:
         fail = 1
-        print("FAIL: NEEDED вне {libc.so, libm.so, libdl.so}:")
+        print("FAIL: NEEDED вне {libc.so, libm.so, libdl.so, libGLESv3.so, libEGL.so}:")
         for n in bad_need:
             print("   ", n)
     else:
