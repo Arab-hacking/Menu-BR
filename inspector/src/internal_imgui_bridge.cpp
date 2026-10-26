@@ -81,6 +81,13 @@ using FnJniStep = void (*)(void* env, void* thiz);
 #if defined(__ANDROID__)
 using FnEglSwapBuffers = EGLBoolean (*)(EGLDisplay dpy, EGLSurface surf);
 FnEglSwapBuffers g_orig_egl_swap = nullptr;
+FnEglSwapBuffers g_orig_egl_swap_drv = nullptr; // драйверский eglSwapBuffers (через eglGetProcAddress)
+
+using FnEglMakeCurrent = EGLBoolean (*)(EGLDisplay, EGLSurface, EGLSurface, EGLContext);
+FnEglMakeCurrent g_orig_egl_make_current = nullptr;
+
+using FnEglCreateWindowSurface = EGLSurface (*)(EGLDisplay, EGLConfig, void*, const EGLint*);
+FnEglCreateWindowSurface g_orig_egl_create_window_surface = nullptr;
 #endif
 
 // Точная 10-аргументная AAPCS64-сигнатура Java_com_blackhub_bronline_game_core_JNILib_multiTouchEvent
@@ -291,6 +298,13 @@ static void BrDiagGlFirstFrame() {
 
 void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_surf) {
     if (!g_attached.load(std::memory_order_acquire) || !g_render_cb) {
+        return;
+    }
+
+    // Контекст без поверхности (headless, например JNILib_step) — рендер
+    // бессмыслен: идёт в несуществующий default FBO (GL-ошибки 0x500/0x502).
+    if (explicit_surf == EGL_NO_SURFACE &&
+        eglGetCurrentSurface(EGL_DRAW) == EGL_NO_SURFACE) {
         return;
     }
 
@@ -531,6 +545,38 @@ EGLBoolean Hooked_eglSwapBuffers(EGLDisplay dpy, EGLSurface surf) {
     return g_orig_egl_swap ? g_orig_egl_swap(dpy, surf) : EGL_FALSE;
 }
 
+// Драйверский eglSwapBuffers (игра может звать его через eglGetProcAddress,
+// минуя экспорт libEGL.so — тогда наш первый хук не срабатывает)
+EGLBoolean Hooked_eglSwapBuffersDrv(EGLDisplay dpy, EGLSurface surf) {
+    RenderStandaloneImGuiFrame(dpy, surf);
+    return g_orig_egl_swap_drv ? g_orig_egl_swap_drv(dpy, surf) : EGL_FALSE;
+}
+
+// ===== TEMP DIAG v4: карта контекстов/поверхностей =====
+EGLBoolean Hooked_eglMakeCurrent(EGLDisplay dpy, EGLSurface draw,
+                                 EGLSurface read, EGLContext ctx) {
+    static int cnt = 0;
+    const int n = cnt++;
+    if ((n < 12 || (n % 600) == 0) && (draw || read) && ctx) {
+        BR_BRIDGE_LOGI("DIAG: makeCurrent[%d]: dpy=%p draw=%p read=%p ctx=%p",
+                       n, dpy, draw, read, ctx);
+    }
+    return g_orig_egl_make_current
+               ? g_orig_egl_make_current(dpy, draw, read, ctx)
+               : EGL_FALSE;
+}
+
+EGLSurface Hooked_eglCreateWindowSurface(EGLDisplay dpy, EGLConfig cfg,
+                                         void* win, const EGLint* attrs) {
+    (void)attrs;
+    EGLSurface s = g_orig_egl_create_window_surface
+                       ? g_orig_egl_create_window_surface(dpy, cfg, win, attrs)
+                       : EGL_NO_SURFACE;
+    BR_BRIDGE_LOGI("DIAG: createWindowSurface: dpy=%p win=%p -> surf=%p", dpy, win, s);
+    return s;
+}
+// ===== /TEMP DIAG v4 =====
+
 #endif // defined(__ANDROID__)
 
 void Hooked_JNILib_multiTouchEvent(void* env, void* thiz,
@@ -738,23 +784,55 @@ bool InternalImGuiBridge::AttachStandaloneRenderer(uintptr_t module_base,
     //     уже обрабатывается в RenderStandaloneImGuiFrame: ресоз GL-ресурсов).
     bool swap_hooked = false;
     {
-        void* egl_sym = dlsym(RTLD_DEFAULT, "eglSwapBuffers");
-        if (!egl_sym) {
-            egl_sym = reinterpret_cast<void*>(eglGetProcAddress("eglSwapBuffers"));
+        void* libegl_swap = dlsym(RTLD_DEFAULT, "eglSwapBuffers");
+        if (!libegl_swap) {
+            libegl_swap = reinterpret_cast<void*>(eglGetProcAddress("eglSwapBuffers"));
         }
-        if (egl_sym) {
+        if (libegl_swap) {
             swap_hooked = br::hook::Arm64Hook::Install(
-                egl_sym,
+                libegl_swap,
                 reinterpret_cast<void*>(&Hooked_eglSwapBuffers),
                 reinterpret_cast<void**>(&g_orig_egl_swap));
             if (swap_hooked) {
                 if (!step_hooked) {
                     g_rt_table.render_hook_name = "eglSwapBuffers (libEGL.so, собственный GLES3)";
                 }
-                BR_BRIDGE_LOGI("Установлен ДОП. хук рендера (кадр перед презентацией): eglSwapBuffers @ %p", egl_sym);
+                BR_BRIDGE_LOGI("Установлен ДОП. хук рендера (кадр перед презентацией): eglSwapBuffers @ %p", libegl_swap);
             } else {
-                BR_BRIDGE_LOGW("Не удалось поставить доп. хук eglSwapBuffers @ %p", egl_sym);
+                BR_BRIDGE_LOGW("Не удалось поставить доп. хук eglSwapBuffers @ %p", libegl_swap);
             }
+        }
+
+        // 1c. Драйверский eglSwapBuffers: игра/Noesis часто берут swap через
+        //     eglGetProcAddress — это ДРУГАЯ функция (обход экспорта libEGL.so),
+        //     и хук на экспорт не срабатывает. Если адрес отличается — хукам его.
+        void* drv_swap = reinterpret_cast<void*>(eglGetProcAddress("eglSwapBuffers"));
+        if (drv_swap && drv_swap != libegl_swap) {
+            const bool drv_ok = br::hook::Arm64Hook::Install(
+                drv_swap,
+                reinterpret_cast<void*>(&Hooked_eglSwapBuffersDrv),
+                reinterpret_cast<void**>(&g_orig_egl_swap_drv));
+            swap_hooked = swap_hooked || drv_ok;
+            BR_BRIDGE_LOGI("DIAG: драйверский eglSwapBuffers=%p (libEGL-экспорт=%p) -> хук %s",
+                           drv_swap, libegl_swap, drv_ok ? "УСТАНОВЛЕН" : "НЕ УДАЛСЯ");
+        } else {
+            BR_BRIDGE_LOGI("DIAG: eglGetProcAddress(\"eglSwapBuffers\") == libEGL-экспорт (%p)", drv_swap);
+        }
+
+        // 1d. TEMP DIAG: карта контекстов/поверхностей (где реальная экранная surface)
+        void* mkc = dlsym(RTLD_DEFAULT, "eglMakeCurrent");
+        if (mkc && br::hook::Arm64Hook::Install(
+                       mkc,
+                       reinterpret_cast<void*>(&Hooked_eglMakeCurrent),
+                       reinterpret_cast<void**>(&g_orig_egl_make_current))) {
+            BR_BRIDGE_LOGI("DIAG: хук eglMakeCurrent @ %p", mkc);
+        }
+        void* cws = dlsym(RTLD_DEFAULT, "eglCreateWindowSurface");
+        if (cws && br::hook::Arm64Hook::Install(
+                       cws,
+                       reinterpret_cast<void*>(&Hooked_eglCreateWindowSurface),
+                       reinterpret_cast<void**>(&g_orig_egl_create_window_surface))) {
+            BR_BRIDGE_LOGI("DIAG: хук eglCreateWindowSurface @ %p", cws);
         }
     }
 
@@ -821,7 +899,10 @@ void InternalImGuiBridge::Detach() noexcept {
     g_orig_multitouch  = nullptr;
     g_orig_jnilib_step = nullptr;
 #if defined(__ANDROID__)
-    g_orig_egl_swap    = nullptr;
+    g_orig_egl_swap             = nullptr;
+    g_orig_egl_swap_drv         = nullptr;
+    g_orig_egl_make_current     = nullptr;
+    g_orig_egl_create_window_surface = nullptr;
 #endif
 }
 

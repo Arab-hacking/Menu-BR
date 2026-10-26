@@ -41,6 +41,11 @@ EGLDisplay eglGetCurrentDisplay(void);
 EGLSurface eglGetCurrentSurface(EGLint reaffle);
 void*      eglGetProcAddress(const char* procname);
 EGLBoolean eglSwapBuffers(EGLDisplay display, EGLSurface surface);
+EGLBoolean eglMakeCurrent(EGLDisplay display, EGLSurface drawSurface,
+                          EGLSurface readSurface, EGLContext context);
+typedef void* NativeWindowType;
+EGLSurface eglCreateWindowSurface(EGLDisplay display, EGLConfig config,
+                                  NativeWindowType native_window, const EGLint* attrib_list);
 
 #ifdef __cplusplus
 }
