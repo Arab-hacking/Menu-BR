@@ -28,6 +28,7 @@
 
 #include "arm64_hook.hpp"
 #include "safe_memory.hpp"
+#include "got_hook.hpp"
 
 // Проверка совпадения нашей копии Dear ImGui 1.90.9
 static_assert(IMGUI_VERSION_NUM == br::offsets::imgui_va::kEmbeddedImGuiVersionNum,
@@ -445,6 +446,68 @@ int PhdrFindCallback(struct dl_phdr_info* info, size_t /*size*/, void* data) {
     return 0;
 }
 
+struct NameCtxForPath { const char* needle; char buf[256]; };
+
+int NameFindCallback(struct dl_phdr_info* info, size_t /*size*/, void* data) {
+    auto* nc = static_cast<NameCtxForPath*>(data);
+    if (info && info->dlpi_name && nc && std::strstr(info->dlpi_name, nc->needle) != nullptr) {
+        std::strncpy(nc->buf, info->dlpi_name, sizeof(nc->buf) - 1);
+        nc->buf[sizeof(nc->buf) - 1] = '\0';
+        return 1;
+    }
+    return 0;
+}
+
+// Путь к модулю в /proc/self/maps (для file-backed RWX-трамплина)
+void FindModulePathImpl(const char* module_name, char* out, size_t out_size) {
+    if (!module_name || !out || out_size == 0) {
+        return;
+    }
+    out[0] = '\0';
+
+    // dlpi_name даётся прямо
+    NameCtxForPath nctx{};
+    nctx.needle = module_name;
+    nctx.buf[0] = '\0';
+    dl_iterate_phdr(&NameFindCallback, &nctx);
+    if (nctx.buf[0] != '\0') {
+        std::strncpy(out, nctx.buf, out_size - 1);
+        out[out_size - 1] = '\0';
+        return;
+    }
+
+    FILE* fp = std::fopen("/proc/self/maps", "r");
+    if (!fp) {
+        return;
+    }
+    char line[1024]{};
+    while (std::fgets(line, sizeof(line), fp)) {
+        if (std::strstr(line, module_name) == nullptr) {
+            continue;
+        }
+        // формат: addr-addr perm off dev inode path
+        char* p = line;
+        for (int field = 0; field < 5 && *p; ++field) {
+            while (*p && *p != ' ') {
+                ++p;
+            }
+            while (*p == ' ') {
+                ++p;
+            }
+        }
+        if (*p) {
+            size_t n = 0;
+            while (p[n] && p[n] != '\n' && n < out_size - 1) {
+                out[n] = p[n];
+                ++n;
+            }
+            out[n] = '\0';
+            break;
+        }
+    }
+    std::fclose(fp);
+}
+
 } // namespace
 
 uintptr_t InternalImGuiBridge::FindModuleBase(const char* module_name) noexcept {
@@ -552,6 +615,18 @@ bool InternalImGuiBridge::AttachStandaloneRenderer(uintptr_t module_base,
 #if defined(__ANDROID__)
     void* client_so = dlopen(offsets::kTargetModuleName, RTLD_NOLOAD | RTLD_NOW);
 
+    // Подсказка для file-backed RWX-трамплина (fallback, если anon-RWX запрещён)
+    {
+        char tramp_hint[256]{};
+        FindModulePathImpl(offsets::kTargetModuleName, tramp_hint, sizeof(tramp_hint));
+        if (tramp_hint[0] != '\0') {
+            br::hook::Arm64Hook::SetTrampolineFileHint(tramp_hint);
+            BR_BRIDGE_LOGI("Trampoline file-hint: %s", tramp_hint);
+        } else {
+            BR_BRIDGE_LOGW("Trampoline file-hint: путь модуля не найден");
+        }
+    }
+
     // 1. Поиск точки кадра: сначала экспортированный JNI-символ JNILib_step через dlsym,
     //    затем фиксированный VA 0x01901D44, и резервный вариант — eglSwapBuffers в libEGL.so
     uintptr_t step_addr = 0;
@@ -610,10 +685,27 @@ bool InternalImGuiBridge::AttachStandaloneRenderer(uintptr_t module_base,
     }
 
     if (!render_hooked) {
+        // Fallback БЕЗ RWX-памяти: GOT/PLT-хук eglSwapBuffers в самом .so игры
+        // (запись в готовый RW-слот GOT; оригинал = прежнее значение слота)
+        BR_BRIDGE_LOGW("Inline-хуки не встали — пробую GOT/PLT-хук eglSwapBuffers (без RWX)...");
+        uintptr_t got_orig = 0;
+        if (module_base != 0 &&
+            br::hook::InstallGotHook(module_base, "eglSwapBuffers",
+                                     reinterpret_cast<uintptr_t>(&Hooked_eglSwapBuffers),
+                                     &got_orig)) {
+            g_orig_egl_swap = reinterpret_cast<FnEglSwapBuffers>(got_orig);
+            render_hooked = true;
+            g_rt_table.render_hook_name = "eglSwapBuffers GOT/PLT (без RWX)";
+            BR_BRIDGE_LOGI("GOT-хук eglSwapBuffers установлен (orig=0x%lx)",
+                           static_cast<unsigned long>(got_orig));
+        }
+    }
+
+    if (!render_hooked) {
         if (client_so) {
             dlclose(client_so);
         }
-        BR_BRIDGE_LOGE("Не удалось установить ни JNILib_step, ни eglSwapBuffers!");
+        BR_BRIDGE_LOGE("Не удалось установить ни JNILib_step, ни eglSwapBuffers, ни GOT-хук!");
         return false;
     }
 
@@ -669,6 +761,7 @@ bool InternalImGuiBridge::AttachStandaloneRenderer(uintptr_t module_base,
 void InternalImGuiBridge::Detach() noexcept {
     g_attached.store(false, std::memory_order_release);
     br::hook::Arm64Hook::RemoveAll();
+    br::hook::RestoreGotHooks();
     g_orig_multitouch  = nullptr;
     g_orig_jnilib_step = nullptr;
 #if defined(__ANDROID__)

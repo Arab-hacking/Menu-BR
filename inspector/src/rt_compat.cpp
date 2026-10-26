@@ -182,6 +182,29 @@ void _ZNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEE9push_backEc
     l->data[sz + 1] = '\0';
 }
 
+// basic_string<char,...>::assign(const char*)
+void _ZNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEE6assignEPKc(void* self, const char* src) {
+    if (src == nullptr) {
+        src = "";
+    }
+    size_t n = 0;
+    while (src[n] != '\0') {
+        ++n;
+    }
+    BrStrRep* r = static_cast<BrStrRep*>(self);
+    if (n > BrStrCap(r)) {
+        BrStrGrow(r, n);
+    }
+    char* dst = BrStrData(r);
+    std::memcpy(dst, src, n);
+    if (BrStrIsShort(r)) {
+        r->flags = static_cast<uint8_t>(1 | (n << 2));
+    } else {
+        reinterpret_cast<BrStrLong*>(r)->size = n;
+    }
+    dst[n] = '\0';
+}
+
 // std::__next_prime(size_t) — ближайшее простое >= n
 size_t _ZNSt3__112__next_primeEm(size_t n) {
     if (n < 2) {

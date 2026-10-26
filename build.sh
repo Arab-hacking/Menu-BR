@@ -97,7 +97,7 @@ build_inspector() {
         rm -f build/fake_*.so
     fi
     echo "→ $SO"
-    echo "  NEEDED: $(readelf -d "$SO" | grep NEEDED | sed 's/.*\[/;s/\].*//' | tr '\n' ' ')"
+    echo "  NEEDED: $(readelf -d "$SO" | grep NEEDED | sed "s/.*\[//;s/\].*//" | tr "\n" " ")"
     echo "  exports: $(nm -D --defined-only "$SO" | awk '{print $3}' | grep -E '^(MenuBR|br_inspector|JNI_OnLoad)' | tr '\n' ' ')"
 }
 
@@ -146,7 +146,7 @@ build_legacy() {
         "$ZIG" cc -target aarch64-linux-gnu -shared -nostdlib -o "$SO" \
             -Wl,-soname,libmenu-br-legacy.so build/obj/*.o
     fi
-    echo "→ $SO (NEEDED: $(readelf -d "$SO" | grep NEEDED | sed 's/.*\[/;s/\].*//' | tr '\n' ' '))"
+    echo "  NEEDED: $(readelf -d "$SO" | grep NEEDED | sed "s/.*\[//;s/\].*//" | tr "\n" " ")"
 }
 
 case "${1:-}" in
