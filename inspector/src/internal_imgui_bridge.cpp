@@ -228,6 +228,7 @@ void QuerySurfaceDimensions(EGLDisplay dpy, EGLSurface surf, int& out_w, int& ou
 // TEMP DIAG (объявления; определения ниже в блоке #if defined(__ANDROID__))
 void BrDiagControlShader();
 void BrDiagDrawTestQuad(int w, int h);
+void BrDiagAutopsy(const char* src_tag);
 
 void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_surf, const char* src_tag) {
     if (!g_attached.load(std::memory_order_acquire) || !g_render_cb) {
@@ -378,6 +379,7 @@ void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_sur
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
+    BrDiagAutopsy(src_tag);     // TEMP DIAG: пока GL-состояние кадра живо
     BrDiagDrawTestQuad(surf_w, surf_h); // TEMP DIAG (пока FBO 0 привязан)
 
     // Восстанавливаем исходные буферы кадра и маски игры
@@ -598,6 +600,77 @@ void BrDiagDrawTestQuad(int w, int h) {
     if (g_tq.drawn_frames == 1 || (g_tq.drawn_frames % 300) == 0) {
         BR_BRIDGE_LOGI("DIAG: тест-квадрат: кадров=%d ctx=%p", g_tq.drawn_frames, cur);
     }
+}
+// ===== /TEMP DIAG =====
+
+// Постмортём: реальное GL-состояние ImGui после RenderDrawData (1-й swap-кадр).
+// ImGui_ImplOpenGL3_Data читается через io.BackendRendererUserData по layout
+// нашей заведённой версии imgui_impl_opengl3.cpp (1.90.9).
+void BrDiagAutopsy(const char* src_tag) {
+    static int s_autopsied = 0;
+    if (s_autopsied || !src_tag || std::strncmp(src_tag, "swap", 4) != 0) {
+        return;
+    }
+    s_autopsied = 1;
+
+    void* bd_ptr = ImGui::GetIO().BackendRendererUserData;
+    if (!bd_ptr) {
+        BR_BRIDGE_LOGE("DIAG: постмортём: BackendRendererUserData=NULL — ImGui_ImplOpenGL3_Init не сработал в нашем контексте!");
+        return;
+    }
+    const uint8_t* bd = static_cast<const uint8_t*>(bd_ptr);
+    const uint32_t glver    = *(const uint32_t*)(bd + 0);
+    const uint32_t font_tex = *(const uint32_t*)(bd + 44);
+    const uint32_t shader   = *(const uint32_t*)(bd + 48);
+    const int32_t  loc_tex  = *(const int32_t*)(bd + 52);
+    const int32_t  loc_proj = *(const int32_t*)(bd + 56);
+    const uint32_t loc_vtx  = *(const uint32_t*)(bd + 60);
+    const uint32_t vbo      = *(const uint32_t*)(bd + 72);
+    const uint32_t ebo      = *(const uint32_t*)(bd + 76);
+    const int64_t  vbo_sz   = *(const int64_t*)(bd + 80);
+    const int64_t  ebo_sz   = *(const int64_t*)(bd + 88);
+    char glsl[33] = {0};
+    std::memcpy(glsl, bd + 4, 32);
+    BR_BRIDGE_LOGI("DIAG: постмортём: GlVersion=%u Glsl=\"%s\" FontTex=%u Shader=%u locTex=%d locProj=%d locVtxPos=%u VBO=%u(sz=%lld) EBO=%u(sz=%lld)",
+                   glver, glsl, font_tex, shader, loc_tex, loc_proj, loc_vtx,
+                   vbo, static_cast<long long>(vbo_sz), ebo, static_cast<long long>(ebo_sz));
+
+    if (shader) {
+        GLint ls = 0, ll = 0;
+        glGetProgramiv(shader, GL_LINK_STATUS, &ls);
+        glGetProgramiv(shader, GL_INFO_LOG_LENGTH, &ll);
+        BR_BRIDGE_LOGI("DIAG: постмортём: imgui program: LINK_STATUS=%d infoLen=%d", ls, ll);
+        if (ll > 1) {
+            char l[512] = {0};
+            glGetProgramInfoLog(shader, ll, nullptr, l);
+            BR_BRIDGE_LOGE("DIAG: постмортём: imgui program log: %s", l);
+        }
+    }
+
+    ImDrawData* dd = ImGui::GetDrawData();
+    if (dd && dd->CmdLists.Size > 0) {
+        ImDrawList* dl = dd->CmdLists[0];
+        if (dl && dl->CmdBuffer.Size > 0 && dl->VtxBuffer.Size > 1) {
+            const ImDrawCmd& c = dl->CmdBuffer[0];
+            const ImVec4 cr = c.ClipRect;
+            const ImDrawVert& v0 = dl->VtxBuffer[c.VtxOffset];
+            const ImDrawVert& v1 = dl->VtxBuffer[c.VtxOffset + 1];
+            BR_BRIDGE_LOGI("DIAG: постмортём: cmd[0]: cmds=%d elems=%d vtx=%d clip=(%d,%d %d,%d) texid=%p",
+                           dl->CmdBuffer.Size, c.ElemCount, dl->VtxBuffer.Size,
+                           static_cast<int>(cr.x), static_cast<int>(cr.y),
+                           static_cast<int>(cr.z), static_cast<int>(cr.w),
+                           static_cast<void*>(c.TextureId));
+            BR_BRIDGE_LOGI("DIAG: постмортём: v0=(%.1f,%.1f) col=%08X  v1=(%.1f,%.1f) uv=(%.3f,%.3f)",
+                           v0.pos.x, v0.pos.y, v0.col, v1.pos.x, v1.pos.y, v1.uv.x, v1.uv.y);
+        } else {
+            BR_BRIDGE_LOGE("DIAG: постмортём: cmdlist[0] пуст");
+        }
+    } else {
+        BR_BRIDGE_LOGE("DIAG: постмортём: DrawData пуст!");
+    }
+
+    const GLint e = glGetError();
+    BR_BRIDGE_LOGI("DIAG: постмортём: glGetError после RenderDrawData = 0x%X", e);
 }
 // ===== /TEMP DIAG =====
 
