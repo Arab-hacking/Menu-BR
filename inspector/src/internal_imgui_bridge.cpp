@@ -224,7 +224,29 @@ void QuerySurfaceDimensions(EGLDisplay dpy, EGLSurface surf, int& out_w, int& ou
     }
 }
 
-// ===== TEMP DIAG (временная диагностика — удалить когда починим) =====
+// ===== TEMP DIAG v2 (временная диагностика — удалить когда починим) =====
+static int g_diag_probe_glx = 0; // центр нашего окна (GL-координаты) для пиксель-пробы
+static int g_diag_probe_gly = 0;
+
+static void BrDrainGlErrors(const char* tag) {
+    int n = 0, last = 0;
+    for (int i = 0; i < 16; ++i) {
+        last = static_cast<int>(glGetError());
+        if (last == 0) break;
+        ++n;
+    }
+    if (n > 0) {
+        BR_BRIDGE_LOGI("DIAG: GL-ошибки [%s]: %d шт, последняя 0x%03X", tag, n, static_cast<unsigned>(last));
+    }
+}
+
+static void BrDiagProbePixel(const char* tag, int glx, int gly) {
+    uint8_t px[4 * 4 * 4] = {0};
+    glReadPixels(glx, gly, 4, 4, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    BR_BRIDGE_LOGI("DIAG: pixel[%s] @gl(%d,%d) = R%02X G%02X B%02X A%02X (центр 4x4)",
+                   tag, glx, gly, px[0], px[1], px[2], px[3]);
+}
+
 static void BrDiagGlFirstFrame() {
     const char* gl_ver  = reinterpret_cast<const char*>(glGetString(GL_VERSION));
     const char* gl_vnd  = reinterpret_cast<const char*>(glGetString(GL_VENDOR));
@@ -232,9 +254,9 @@ static void BrDiagGlFirstFrame() {
     BR_BRIDGE_LOGI("DIAG: GL=%s | Vendor=%s | Renderer=%s",
                    gl_ver ? gl_ver : "?", gl_vnd ? gl_vnd : "?", gl_rnd ? gl_rnd : "?");
 
-    // Контрольный тест: компилирует/линкует ли этот контекст ES3-шейдер
+    // Контроль: ES3-шейдер (fragment С precision — как у imgui)
     const char* vs = "#version 300 es\nlayout(location=0) in vec4 P; void main(){ gl_Position = P; }";
-    const char* fs = "#version 300 es\nlayout(location=0) out vec4 C; void main(){ C = vec4(1.0); }";
+    const char* fs = "#version 300 es\nprecision mediump float;\nlayout(location=0) out vec4 C; void main(){ C = vec4(1.0); }";
     char logbuf[512] = {};
     GLuint v = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(v, 1, &vs, nullptr);
@@ -248,7 +270,7 @@ static void BrDiagGlFirstFrame() {
     GLint fok = 0; glGetShaderiv(f, GL_COMPILE_STATUS, &fok);
     logbuf[0] = 0;
     if (!fok) glGetShaderInfoLog(f, sizeof(logbuf), nullptr, logbuf);
-    BR_BRIDGE_LOGI("DIAG: контроль fragment compile=%d %s", fok, fok ? "" : logbuf);
+    BR_BRIDGE_LOGI("DIAG: контроль fragment(precision) compile=%d %s", fok, fok ? "" : logbuf);
     GLuint p = glCreateProgram();
     glAttachShader(p, v);
     glAttachShader(p, f);
@@ -262,9 +284,9 @@ static void BrDiagGlFirstFrame() {
 
     GLint fbo = 0;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
-    BR_BRIDGE_LOGI("DIAG: текущий FBO=%d (0 = окно EGL, !=0 = свой FBO игры — тогда наш оверлей на FBO 0 будет невидим)", fbo);
+    BR_BRIDGE_LOGI("DIAG: текущий FBO=%d (0 = окно EGL, !=0 = свой FBO игры)", fbo);
 }
-// ===== /TEMP DIAG =====
+// ===== /TEMP DIAG v2 =====
 
 void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_surf) {
     if (!g_attached.load(std::memory_order_acquire) || !g_render_cb) {
@@ -379,7 +401,14 @@ void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_sur
     glGetBooleanv(GL_COLOR_WRITEMASK, prev_color_mask);
     glGetBooleanv(GL_DEPTH_WRITEMASK, &prev_depth_mask);
 
+    // TEMP DIAG v2: ошибки игры (до нас) + пиксель "до" нашего рендера
+    BrDrainGlErrors("игра, до нашего рендера");
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    {
+        int glx = 600, gly = surf_h - 400;
+        if (g_diag_probe_glx > 0) { glx = g_diag_probe_glx; gly = g_diag_probe_gly; }
+        BrDiagProbePixel("до", glx, gly);
+    }
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
     ImGui_ImplOpenGL3_NewFrame();
@@ -415,21 +444,38 @@ void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_sur
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-    // TEMP DIAG: доказываем, что кадры идут и drawdata не пустой
+    // TEMP DIAG v2: пиксель "после" нашего рендера + наши GL-ошибки (изолированно)
     {
+        int glx = 600, gly = surf_h - 400;
+        if (g_own_ctx && g_own_ctx->Windows.Size > 0) {
+            for (int i = 0; i < g_own_ctx->Windows.Size; ++i) {
+                ImGuiWindow* w = g_own_ctx->Windows[i];
+                if (w && w->WasActive && !w->Hidden &&
+                    (w->Flags & ImGuiWindowFlags_NoInputs) == 0) {
+                    const int cx = static_cast<int>(w->Pos.x + w->Size.x * 0.5f);
+                    const int cy = static_cast<int>(w->Pos.y + w->Size.y * 0.5f);
+                    if (cx > 4 && cy > 4 && cx < surf_w - 4 && cy < surf_h - 4) {
+                        glx = cx; gly = surf_h - cy;
+                        g_diag_probe_glx = cx; g_diag_probe_gly = surf_h - cy;
+                        break;
+                    }
+                }
+            }
+        }
+        BrDiagProbePixel("после", glx, gly);
+        BrDrainGlErrors("наши, после RenderDrawData");
         ImDrawData* dd0 = ImGui::GetDrawData();
         static int s_diag_logged = 0;
         if (s_diag_logged < 3 || (g_rt_table.rendered_frames_total % 60) == 0) {
-            BR_BRIDGE_LOGI("DIAG: кадр=%llu DrawData: CmdLists=%d Vtx=%d Idx=%d | gl_err=0x%X",
+            BR_BRIDGE_LOGI("DIAG: кадр=%llu DrawData: CmdLists=%d Vtx=%d Idx=%d",
                            (unsigned long long)g_rt_table.rendered_frames_total,
                            dd0 ? dd0->CmdListsCount : -1,
                            dd0 ? dd0->TotalVtxCount : -1,
-                           dd0 ? dd0->TotalIdxCount : -1,
-                           (unsigned)glGetError());
+                           dd0 ? dd0->TotalIdxCount : -1);
             if (s_diag_logged < 3) ++s_diag_logged;
         }
     }
-    // ===== /TEMP DIAG =====
+    // ===== /TEMP DIAG v2 =====
 
     // Восстанавливаем исходные буферы кадра и маски игры
     glColorMask(prev_color_mask[0], prev_color_mask[1], prev_color_mask[2], prev_color_mask[3]);
