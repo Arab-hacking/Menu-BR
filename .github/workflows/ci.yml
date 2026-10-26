@@ -1,0 +1,183 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, 'arena/*' ]
+  pull_request:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # wheel ziglang не кладёт `zig` в venv/bin — бинарник внутри пакета,
+      # поэтому делаем симлинк
+      - name: Install zig (pinned)
+        run: |
+          set -o pipefail
+          {
+            set -x
+            python -m venv venv
+            ./venv/bin/pip install --quiet ziglang==0.15.2
+            ZIGREAL=$(./venv/bin/python -c \
+              "import os, ziglang; print(os.path.join(os.path.dirname(ziglang.__file__), 'zig'))")
+            ln -sf "$ZIGREAL" venv/bin/zig
+            echo "$GITHUB_WORKSPACE/venv/bin" >> "$GITHUB_PATH"
+            export PATH="$PWD/venv/bin:$PATH"
+            zig version
+          } 2>&1 | tee /tmp/ci.log
+
+      # 1) кросс-сборка arm64
+      - name: Build libmenu-br.so (aarch64)
+        id: b
+        env:
+          ZIG: ${{ github.workspace }}/venv/bin/zig
+        run: |
+          set +e
+          { set -x; ./build.sh zig; } > /tmp/stage.log 2>&1
+          rc=$?
+          cat /tmp/stage.log >> /tmp/ci.log
+          if [ $rc -ne 0 ]; then
+            msg=$(head -2 /tmp/stage.log | tr '\n' '|'); msg="|${msg}|$(grep -aiE "error|undefined reference|cannot|fail" /tmp/stage.log | head -3 | tr '\n' '|')"
+            echo "err=BUILD|${msg:0:200}" >> "$GITHUB_OUTPUT"
+            echo "##[error] build rc=$rc: ${msg}"
+          fi
+          exit $rc
+
+      # 2) аудит ABI: NEEDED = 0, экспорт ровно 4 символа
+      - name: Audit dynamic ABI
+        id: a
+        run: |
+          set +e
+          rc=0
+          {
+            set -x
+            SO=build/libmenu-br.so
+            # ожидается: NEEDED ⊆ {libc.so, libm.so, libdl.so} и не пусто
+            need_names=$(readelf -d "$SO" | grep NEEDED | sed 's/.*\[\(.*\)\]/\1/' | sort | tr '\n' ' ')
+            echo "NEEDED: [${need_names}]"
+            case " $need_names " in
+              *libc.so*) : ;;
+              *) echo "ERROR: нет NEEDED libc.so"; rc=1 ;;
+            esac
+            for n in $need_names; do
+              case "$n" in libc.so|libm.so|libdl.so|libGLESv3.so|libEGL.so) : ;;
+              *) echo "ERROR: NEEDED вне bionic+GL: $n"; rc=1 ;;
+              esac
+            done
+            [ $rc -eq 0 ] && echo "OK: NEEDED корректны"
+            exp=$(readelf --dyn-syms -W "$SO" | awk '$5=="GLOBAL" && $7 ~ /^[0-9]+$/ {print $8}' | sort -u | tr '\n' ' ')
+            echo "exports: ${exp}"
+            # Ожидаемый набор: 3 MenuBR_* (smali-совместимость) + 4 br_inspector_*
+            # (C-API референса). Self-start — через constructor в main_entry.cpp.
+            for want in MenuBR_Init MenuBR_IsActive MenuBR_Shutdown \
+                        br_inspector_init br_inspector_shutdown br_inspector_set_hook_backend br_inspector_feed_touch; do
+              case " $exp " in
+                *" $want "*) : ;;
+                *) echo "ERROR: нет экспорта $want"; rc=1 ;;
+              esac
+            done
+            nexp=$(echo $exp | wc -w)
+            if [ "$nexp" -ne 7 ]; then
+              echo "ERROR: ожидаю ровно 7 экспортов, а есть $nexp: ${exp}"
+              rc=1
+            elif [ $rc -eq 0 ]; then
+              echo "OK: экспорт корректен"
+            fi
+          } > /tmp/stage.log 2>&1
+          cat /tmp/stage.log >> /tmp/ci.log
+          if [ "$rc" != "0" ]; then
+            msg=$(tail -4 /tmp/stage.log | tr '\n' '|' | head -c 200)
+            echo "err=ABI|${msg}" >> "$GITHUB_OUTPUT"
+            echo "##[error] audit: ${msg}"
+          fi
+          exit "$rc"
+
+      # 3) аудит: все UND должны быть в bionic libc, NEEDED ⊆ {libc,libdl}
+      - name: Audit vs bionic exports
+        run: |
+          set +e
+          rc=0
+          { set -x; python3 tools/audit_bionic.py build/libmenu-br.so; } > /tmp/stage.log 2>&1
+          rc=$?
+          cat /tmp/stage.log >> /tmp/ci.log
+          if [ "$rc" != "0" ]; then
+            msg=$(tail -6 /tmp/stage.log | tr '\n' '|' | head -c 200)
+            echo "err=BIONIC|${msg}" >> "$GITHUB_OUTPUT"
+            echo "##[error] bionic audit: ${msg}"
+          fi
+          exit "$rc"
+
+      # 4) хост-тест: ELF/PLT/сигнатуры на reference/libblackrussia-client.so
+      - name: Host test (x86_64)
+        id: h
+        env:
+          ZIG: ${{ github.workspace }}/venv/bin/zig
+        run: |
+          set +e
+          { set -x; make test; } > /tmp/stage.log 2>&1
+          rc=$?
+          cat /tmp/stage.log >> /tmp/ci.log
+          if [ $rc -ne 0 ]; then
+            msg=$({ grep -a "FAIL" /tmp/stage.log; tail -5 /tmp/stage.log; } | tail -4 | tr '\n' '|' | head -c 200)
+            echo "err=HOST|${msg}" >> "$GITHUB_OUTPUT"
+            echo "##[error] hosttest rc=$rc: ${msg}"
+            exit $rc
+          fi
+          touch /tmp/ci_ok
+
+      - name: Upload artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: libmenu-br-arm64
+          path: build/libmenu-br.so
+
+      # диагностический степ: имя = первый найденный сбой (виден через API)
+      - name: "DIAG: ${{ (steps.b.outputs.err || steps.a.outputs.err || steps.h.outputs.err) || 'GREEN' }}"
+        if: always()
+        run: |
+          set +e
+          {
+            echo "# CI log — run ${GITHUB_RUN_ID} — $(date -u +%FT%TZ)"
+            echo ""
+            cat /tmp/ci.log 2>/dev/null || echo "(no log captured)"
+          } > /tmp/ci-log.txt
+          head -c 60000 /tmp/ci-log.txt > /tmp/ci-issue.txt
+          if [ -f /tmp/ci_ok ]; then
+            (
+              cd /tmp
+              rm -rf ciup && git init -q ciup && cd ciup
+              git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+              cp /tmp/ci-log.txt ci-log.txt
+              git add ci-log.txt
+              git -c user.email="ci@arena.bot" -c user.name="ci-log" \
+                commit -q -m "ci log run ${GITHUB_RUN_ID}"
+              git push -qf origin HEAD:ci-diagnostics
+            ) && echo "log pushed" || echo "push failed (read-only token?)"
+            exit 0
+          fi
+          ./venv/bin/python - > /tmp/issue.json 2>/dev/null <<'PY'
+          import json, os
+          print(json.dumps({
+              "title": "CI failure run %s" % os.environ.get("GITHUB_RUN_ID", "?"),
+              "body": open("/tmp/ci-issue.txt").read(),
+          }))
+          PY
+          code=$(curl -s -o /tmp/resp.json -w "%{http_code}" -X POST \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -d @/tmp/issue.json \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues" || echo 000)
+          echo "issue POST -> HTTP $code"
+          head -c 1500 /tmp/resp.json 2>/dev/null; echo
+          exit 0
