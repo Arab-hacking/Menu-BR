@@ -3,11 +3,17 @@
 Инжектируемый ImGui-меню (`.so`) для **Black Russia**
 (`libblackrussia-client.so`, Android ARM64).
 
-**База (текущая, 3-й виток): проект `br_imgui_inspector_16.111.19050`**
-(полностью автономный Dear ImGui 1.90.9, Standalone OpenGL ES 3.0)
-скопирован в `inspector/` без изменений + добавлен модуль функций мода
-(`inspector/src/mod_features.*`) — вкладка **«0. MOD (действия)»**:
-телепорт, лечилка, посадка в машину, турбо.
+**База (текущая, 4-й виток): РАБОЧАЯ версия проекта `br_imgui_inspector_16.111.19050`**
+(полностью автономный Dear ImGui 1.90.9, Standalone OpenGL ES 3.0; внутри
+`inspector/prebuilt/arm64-v8a/libbr_inspector_16111.so` — эталонный NDK-билд
+этого же исходника) скопирован в `inspector/` **как есть** + добавлен
+только модуль функций мода (`inspector/src/mod_features.*`) — раздел
+**«MOD»** (8-й в навигации): телепорт, лечилка, посадка в машину, турбо.
+
+Минимальный build-compat для кросс-сборки zig (без него код не собирается
+на наших хедерах; на NDK-сборке не требуется): `BrPageSize()` в
+`arm64_hook.cpp` (замена `sysconf(_SC_PAGESIZE)`), ctype-таблицы glibc
+(`src/rt_shim.c`), `JNIEXPORT` с visibility (`tools/shim_include/jni.h`).
 
 | Сборка | build-id | Статус |
 |---|---|---|
@@ -21,17 +27,19 @@
 
 ## Возможности
 
-Вкладки инспектора (база — проект `br_imgui_inspector_16.111.19050`):
+Разделы инспектора (база — проект `br_imgui_inspector_16.111.19050`,
+навигация — боковая панель / верхние чипсы, 8 разделов):
 
-| Вкладка | Что показывает |
-|---|---|
-| **0. MOD (действия)** | **Наши функции мода**: лечилка (HP/Armor=100), телепорт по X/Y/Z (или «тек. позиция»), турбо (множитель 1.5–8x, скорость фиксируется при включении), список машин VehiclePool (2000) с кнопками **«Въехать»**/«Телепорт», список игроков PlayerPool с «Телепорт». |
-| 1. Модуль и ImGui | Base модуля, Build-ID (OK/отличается), версии встроенного/собственного ImGui, хуки. |
-| 2. LocalPlayer и CPed | Полная разкладка `CLocalPlayer`/`CPed` (id, ник, ped/veh указатели, HP-like, позиция, кэш пакетов 30/33). |
-| 3. PlayerPool (1504) | Все слоты игроков: id, ник, состояние, машина, aux-поля; поиск и фильтры. |
-| 4. VehiclePool (2000) | Все машины: net/game указатели, id, класс, позиция, скорость, backref; фильтры. |
-| 5. Сеть: Пакеты и RPC | **Живой net-монитор** (пассивные хуки `RakClient Send`/`RPC`): ping/MTU/статус, последние события с hex, справочник raw-пакетов (27–39) и RPC (314–441). |
-| 6. Память и Карта VA | Read-only hex-инспектор памяти + карта VA модуля. |
+| # | Раздел | Что показывает |
+|---|---|---|
+| 0 | Обзор | Дашборд: живые графики (FPS, frametime, ping, пакет/сек, скорость), статус соединения, Build-ID. |
+| 1 | Игрок | LocalPlayer, CPed и матрица (id, ник, ped/veh указатели, HP-like, позиция, кэш пакетов 30/33). |
+| 2 | Игроки | PlayerPool (1504 слота): id, ник, состояние, машина, aux-поля; поиск и фильтры, pin-игроков. |
+| 3 | Транспорт | VehiclePool (2000 слотов): net/game указатели, id, класс, позиция, скорость, backref; фильтры. |
+| 4 | Сеть | **Живой net-монитор** (пассивные хуки `RakClient Send`/`RPC`): ping/MTU/статус, события с hex и Byte-Diff, справочник raw-пакетов (27–39) и RPC (314–441). |
+| 5 | Память | Hex, встроенный ARM64-дизассемблер, Watchlist, Read-Only сканер, карта VA, история навигации. |
+| 6 | Опции | Темы (4), масштаб UI, адаптация под сенсор, экспорт Read-Only отчётов (JSON/CSV/TXT). |
+| **7** | **MOD** | **Наши функции мода**: лечилка (HP/Armor=100), турбо (множитель 1.5–8x), телепорт по X/Y/Z (или «тек. позиция»), список машин VehiclePool с кнопками **«Въехать»**/«Телепорт», список игроков PlayerPool с «Телепорт». |
 
 Навигация: pill-бейдж (плавающая кнопка) — открыть/закрыть меню, мини-HUD;
 ввод — касания через хук `JNILib_multiTouchEvent` (тап/перетаскивание;
@@ -57,20 +65,17 @@ SIGSEGV при невалидной странице); все чтения — r
    идемпотентно). Тред ждёт появления `libblackrussia-client.so`
    (`dl_iterate_phdr`, 150×100 мс), читает build-id из `.note.gnu.build-id`.
 2. **Хуки** (`inspector/src/internal_imgui_bridge.cpp`, ARM64 inline-hook с
-   релокацией ADRP/ADR/B/BL и RWX-трамплином, `arm64_hook.cpp`):
-   - `JNILib_step` (`0x01901D44`, dlsym → fallback VA) — точка кадра:
-     оригинал → рендер собственного ImGui;
-   - `eglSwapBuffers` (libEGL, резервный триггер) — рендер перед презентацией;
-   - `JNILib_multiTouchEvent` (`0x01902270`) — ввод + capture-стейт-машина;
-   - пассивные хуки `RakClient Send`/`RPC` для net-монитора (вкладка Сеть).
-   **Если inline-хук не встаёт** (например, SELinux запрещает RWX-память):
-   - трамплин создаётся как **file-backed** маппинг exec-сегмента самого
-     `.so` игры (RW → запись → RX) вместо анонимного `mmap`;
-   - рендер-триггер падает на **GOT/PLT-хук `eglSwapBuffers`**
-     (`inspector/src/got_hook.cpp`): в слот GOT игры записывается адрес
-     детура, оригинал — прежнее значение слота. RWX не нужен вовсе
-     (страница `.got` уже RW). Все отказы хуков логируются с errno
-     (теги `BRHook`/`BRGOT`) — смотри `brmenu.log`.
+   релокацией ADRP/ADR/B/BL и RWX-трамплином, `arm64_hook.cpp`; размер
+   страницы — `BrPageSize()` = `getpagesize()` с fallback 4096):
+   - `JNILib_step` (dlsym в `.so` игры → `RTLD_DEFAULT` → fallback VA
+     `0x01901D44`) — точка кадра: оригинал → рендер собственного ImGui;
+   - если `JNILib_step` не встал — резервный рендер-триггер
+     `eglSwapBuffers` (libEGL, dlsym / `eglGetProcAddress`);
+   - `JNILib_multiTouchEvent` (dlsym → VA `0x01902270`) — ввод +
+     capture-стейт-машина;
+   - пассивные хуки `RakClient Send`/`RPC` для net-монитора (раздел Сеть).
+   Все установки/отказы хуков логируются с адресами (тег
+   `BRInspector16111`) — смотри `brmenu.log`.
 3. **Рендер** (Dear ImGui **1.90.9** + официальный `imgui_impl_opengl3`,
    ES3, **собственный изолированный ImGui-контекст** — без зависимости от
    встроенного в игру GImGui): шрифт — системный Roboto/Noto с кириллицей
@@ -135,9 +140,21 @@ cmake --build build
 ### 3) Хост-тест (x86_64, без телефона)
 
 ```sh
-make test   # ELF/PLT/сигнатуры на reference/libblackrussia-client.so (16/16)
+make test   # ELF/PLT/сигнатуры на reference/libblackrussia-client.so
 GAME_SO=/другой/путь/libblackrussia-client.so make test   # другая сборка
 python3 tools/audit_bionic.py build/libmenu-br.so  # аудит NEEDED/UND
+
+# selftest инспектора: каталоги пакетов/RPC, трамплины, headless-рендер
+# всех 8 разделов (включая MOD) в ImGui 1.90.9:
+zig c++ -std=c++17 -fno-exceptions -fno-rtti -O1 \
+  -Iinspector/include -Iinspector/third_party/imgui -Itools/shim_include \
+  inspector/tests/selftest_main.cpp \
+  inspector/src/{arm64_hook,arm64_disasm,safe_memory,got_hook,network_catalog, \
+  internal_imgui_bridge,inspector_ui_helpers,inspector_menu, \
+  inspector_menu_memory_export,mod_features,game_reader,rt_compat}.cpp \
+  inspector/third_party/imgui/imgui{,_draw,_tables,_widgets}.cpp \
+  -o /tmp/selftest_host && /tmp/selftest_host
+# → "ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ УСПЕШНО" (8 разделов отрисованы, Vertices > 0)
 ```
 
 ## Использование на устройстве
@@ -159,29 +176,40 @@ init();
 ## Структура
 
 ```
-inspector/                  БАЗА: проект br_imgui_inspector_16.111.19050 (без изменений)
+inspector/                  БАЗА: РАБОЧАЯ версия br_imgui_inspector_16.111.19050 (как есть)
+  Android.mk / Application.mk      их NDK-конфигурация (для справки)
+  prebuilt/arm64-v8a/          ЭТАЛОН: их рабочий NDK-билд libbr_inspector_16111.so
+  analysis_16.111.19050/       их RE-материалы (asm-листы, rpc-каталоги, ANALYSIS.md)
   include/
     br_offsets_16_111_19050.hpp  все VA/офсеты 16.111 (build-id 2b301eb3…)
     arm64_hook.hpp           ARM64 inline-hook API
+    arm64_disasm.hpp         встроенный ARM64-декодер инструкций
     game_reader.hpp          read-only снимки (LocalPlayer/Remote/Vehicle/RakNet)
     internal_imgui_bridge.hpp свой ImGui-контекст + хуки кадра/тача
     network_catalog.hpp      каталог пакетов/RPC + пассивный observer
-    inspector_menu.hpp       7 вкладок UI
+    inspector_menu.hpp       8 разделов UI (7 инспектора + MOD)
+    inspector_ui_helpers.hpp темы, палитры, векторные иконки, чипсы
     safe_memory.hpp          SafeMemory (process_vm_readv)
+    mod_features.hpp         НАШЕ: API функций мода
   src/
-    main_entry.cpp           self-start (constructor), br_inspector_* C-API
-    internal_imgui_bridge.cpp  AttachStandaloneRenderer, хуки, touch-очередь
+    main_entry.cpp           self-start (constructor), br_inspector_* C-API, JNI_OnLoad
+    internal_imgui_bridge.cpp  standalone-рендер, AttachStandaloneRenderer, touch-очередь
     game_reader.cpp          CaptureSnapshot
-    inspector_menu.cpp       рендер вкладок
+    inspector_menu.cpp       рендер разделов (+ RenderSectionMod — НАШЕ)
+    inspector_ui_helpers.cpp темы/иконки/чипсы
+    inspector_menu_memory_export.cpp экспорт Read-Only отчётов (JSON/CSV/TXT)
+    arm64_disasm.cpp         декодер ARM64
+    arm64_hook.cpp           трамплины с релокацией (+ BrPageSize — build-compat)
     network_catalog.cpp      каталог + observer Send/RPC
-    arm64_hook.cpp           трэмплины с релокацией
     safe_memory.cpp          process_vm_readv
     mod_features.cpp         НАШЕ: телепорт/лечилка/посадка/турбо (+SafeWrite)
     android_log_shim.cpp     НАШЕ: __android_log_print → brmenu.log + logcat
     entry_compat.cpp         НАШЕ: MenuBR_* обёртки (smali-совместимость)
+    got_hook.{cpp,hpp}       НАШЕ: GOT-хук (резервный, в текущем билде не задействован)
     rt_compat.cpp            НАШЕ: std::thread/mutex/chrono/string/cxa_guard
     rt_compat_c.c            НАШЕ: sized operator delete (hidden)
-  third_party/imgui/         Dear ImGui v1.90.9 + impl_opengl3 (их копия)
+  third_party/imgui/         Dear ImGui v1.90.9 + impl_opengl3 + imgui_internal.h (их копия)
+  tests/selftest_main.cpp    их selftest + прогон всех 8 разделов (MOD включён)
 src/                        LEGACY (2-й виток): свой imgui 1.91.9b + PLT-хуки
                             (./build.sh legacy-zig; история git — полный путь)
 tools/shim_include/         shim-хедеры Android API для zig (log/jni/EGL/GL/link)

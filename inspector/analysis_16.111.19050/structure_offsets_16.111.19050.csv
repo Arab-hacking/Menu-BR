@@ -1,0 +1,14 @@
+object_or_area,function_va,offset_or_formula,meaning_and_evidence
+PlayerPool,0x17B18D4,ID limit 0x5DF (1503),bounds check in current .so; max ID
+PlayerPool,0x17B18D4,base + 8 + id*8,slot pointer indexing in current .so
+RemotePlayer,0x17D4188,+0x10,CPed pointer by use
+RemotePlayer,0x17D4188,"+0x120, +0x150, +0x15B, +0x15C",state/vehicle/id-related fields; labels only partial
+RemotePlayer/CPed,0x17D4188,CPed +0x38..+0x40,position vector use in apply path
+CPed,0x17D4188 / 0x178EE04,+0x540 pointer; +0x548 byte,vehicle pointer / in-vehicle flag by use
+LocalPlayer/vehicle,0x178BDB0 / 0x178E904,LocalPlayer +0x40 -> vehicle; vehicle +0x434,vehicle ID in local sync sender
+CPed,0x178EE04 / 0x178E904,"+0x4B0, +0x4B8",float values converted to 16-bit in packet serialization
+LocalPlayer,0x178EE04,"+0x1F4, +0x1F8, +0x200",sync state fields; semantics unresolved
+LocalPlayer cache,0x178E904,+0xF0..+0x108,cached values compared before packet 33 send
+VehiclePool,0x17DEE34,"2000 slots, stride 8",loop to 0x7D0 and pointer indexing
+Vehicle-like object,0x17A4928,"+0x430, +0x790",class/type branch and float field use; class/enum not fully mapped
+Vehicle object,0x17D4188,+0xB8,back-reference reset/set in vehicle relation path

@@ -127,9 +127,17 @@ void BrStrGrow(void* self, size_t min_cap) {
 
 } // namespace
 
+// Все определения ниже — под лейауты zig libc++ (aarch64). В хост-сборке
+// (selftest) свои версии предоставляет libc++ хоста — иначе corruption
+// (SSO-лейаут std::string отличается) и duplicate symbol'ы.
+#if defined(__ANDROID__)
+
 extern "C" {
 
 // ---- __cxa_guard -------------------------------------------------------------
+// Только для кросс-сборки (цель): в хост-сборке (selftest) их даёт
+// compiler-rt хоста — иначе duplicate symbol.
+#if defined(__ANDROID__)
 int __cxa_guard_acquire(void* guard) {
     return br_cxa_guard_acquire_impl(guard);
 }
@@ -137,6 +145,7 @@ int __cxa_guard_acquire(void* guard) {
 void __cxa_guard_release(void* guard) {
     br_cxa_guard_release_impl(guard);
 }
+#endif
 
 // ---- glibc-имя sscanf: glibc-прототип vsscanf линкуется под asm-именем
 //      __isoc99_vsscanf, которого НЕТ в bionic (там только vsscanf).
@@ -299,11 +308,14 @@ int64_t _ZNSt3__16chrono12steady_clock3nowEv(void) {
 }
 
 // libc++ helper'ы -----------------------------------------------------------------
-// std::__throw_system_error(int, const char*) — без исключений: abort
+// std::__throw_system_error(int, const char*) — без исключений: abort.
+// Только для кросс-сборки: в хост-сборке даёт libc++ хоста.
+#if defined(__ANDROID__)
 void _ZNSt3__120__throw_system_errorEiPKc(int, const char*) {
     std::fprintf(stderr, "[rt_compat] __throw_system_error\n");
     std::abort();
 }
+#endif
 
 // std::__libcpp_verbose_abort(const char*, ...)
 void _ZNSt3__122__libcpp_verbose_abortEPKcz(const char* fmt, ...) {
@@ -317,3 +329,5 @@ void _ZNSt3__122__libcpp_verbose_abortEPKcz(const char* fmt, ...) {
 }
 
 } // extern "C"
+
+#endif // __ANDROID__

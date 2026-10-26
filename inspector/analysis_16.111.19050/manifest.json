@@ -1,0 +1,145 @@
+{
+  "so_path": "/home/user/br_analysis/live/libblackrussia-client-16.111.19050.so",
+  "size": 36296864,
+  "sha256": "44e5b7f5e22a2fa7fb16268bf043d25f1feeb1d600dd6b56feb3b43dd236f1fd",
+  "sections": {
+    "NULL": {
+      "va": 0,
+      "off": 0,
+      "size": 0
+    },
+    ".note.android.ident": {
+      "va": 568,
+      "off": 568,
+      "size": 152
+    },
+    ".note.gnu.build-id": {
+      "va": 720,
+      "off": 720,
+      "size": 36
+    },
+    ".dynsym": {
+      "va": 760,
+      "off": 760,
+      "size": 133704
+    },
+    ".gnu.version": {
+      "va": 134464,
+      "off": 134464,
+      "size": 11142
+    },
+    ".gnu.version_r": {
+      "va": 145608,
+      "off": 145608,
+      "size": 192
+    },
+    ".gnu.hash": {
+      "va": 145800,
+      "off": 145800,
+      "size": 32396
+    },
+    ".dynstr": {
+      "va": 178196,
+      "off": 178196,
+      "size": 201209
+    },
+    ".rela.dyn": {
+      "va": 379408,
+      "off": 379408,
+      "size": 3459000
+    },
+    ".rela.plt": {
+      "va": 3838408,
+      "off": 3838408,
+      "size": 56592
+    },
+    ".rodata": {
+      "va": 3895040,
+      "off": 3895040,
+      "size": 5191048
+    },
+    ".gcc_except_table": {
+      "va": 9086088,
+      "off": 9086088,
+      "size": 801444
+    },
+    ".eh_frame_hdr": {
+      "va": 9887532,
+      "off": 9887532,
+      "size": 697556
+    },
+    ".eh_frame": {
+      "va": 10585088,
+      "off": 10585088,
+      "size": 3235004
+    },
+    ".text": {
+      "va": 13820096,
+      "off": 13820096,
+      "size": 20312752
+    },
+    ".plt": {
+      "va": 34132848,
+      "off": 34132848,
+      "size": 37760
+    },
+    ".data.rel.ro": {
+      "va": 34187008,
+      "off": 34170624,
+      "size": 1176864
+    },
+    ".fini_array": {
+      "va": 35363872,
+      "off": 35347488,
+      "size": 24
+    },
+    ".init_array": {
+      "va": 35363896,
+      "off": 35347512,
+      "size": 3560
+    },
+    ".dynamic": {
+      "va": 35367456,
+      "off": 35351072,
+      "size": 608
+    },
+    ".got": {
+      "va": 35368064,
+      "off": 35351680,
+      "size": 11608
+    },
+    ".got.plt": {
+      "va": 35379672,
+      "off": 35363288,
+      "size": 18888
+    },
+    ".relro_padding": {
+      "va": 35398560,
+      "off": 35382176,
+      "size": 3168
+    },
+    ".data": {
+      "va": 35414976,
+      "off": 35382208,
+      "size": 912104
+    },
+    ".bss": {
+      "va": 36327104,
+      "off": 36294312,
+      "size": 27798432
+    },
+    ".comment": {
+      "va": 0,
+      "off": 36294312,
+      "size": 546
+    },
+    ".shstrtab": {
+      "va": 0,
+      "off": 36294858,
+      "size": 275
+    }
+  },
+  "functions_with_fde": 85877,
+  "fde_count": 85877,
+  "relative_relocations": 135224
+}

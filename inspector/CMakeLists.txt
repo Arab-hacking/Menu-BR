@@ -17,10 +17,13 @@ set(IMGUI_CORE_SOURCES
 set(BR_INSPECTOR_CORE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/safe_memory.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/arm64_hook.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/arm64_disasm.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/internal_imgui_bridge.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/game_reader.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/network_catalog.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/inspector_ui_helpers.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/inspector_menu.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/inspector_menu_memory_export.cpp"
 )
 
 if(ANDROID)

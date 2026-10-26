@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "imgui.h"
+#include "arm64_disasm.hpp"
 #include "arm64_hook.hpp"
 #include "br_offsets_16_111_19050.hpp"
 #include "game_reader.hpp"
@@ -89,7 +90,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    // 3. Полноценный headless прогон Dear ImGui 1.90.9 по всем 6 вкладкам меню
+    // 3. Полноценный headless прогон Dear ImGui 1.90.9 по всем 8 разделам меню (7 инспектора + MOD)
     IMGUI_CHECKVERSION();
     ImGuiContext* ctx = ImGui::CreateContext();
     ImGuiIO& io       = ImGui::GetIO();
@@ -197,17 +198,39 @@ int main(int argc, char** argv) {
     br::ui::InspectorMenu menu;
     menu.SetExternalSnapshotForTest(snap);
     menu.GetConfig().show_mini_hud = true;
+    menu.AddWatchAddress(mock_elf.fake_base + br::offsets::kGnuBuildIdDescVA,
+                         br::ui::WatchValueType::Uint32, "BuildID Head");
 
-    for (int tab = 0; tab < 6; ++tab) {
+    // Проверим встроенный декодер AArch64 инструкций
+    char asm_buf[96]{};
+    br::disasm::FormatArm64Instruction(0xD65F03C0U, 0x1901D44ULL, asm_buf, sizeof(asm_buf));
+    assert(std::strcmp(asm_buf, "ret") == 0);
+    br::disasm::FormatArm64Instruction(0x94000010U, 0x1901D44ULL, asm_buf, sizeof(asm_buf));
+    assert(std::strstr(asm_buf, "bl ") != nullptr);
+    std::printf("[OK] Встроенный декодер инструкций AArch64 проверен (%s).\n", asm_buf);
+
+    for (int tab = 0; tab < 8; ++tab) {
+        menu.GetConfig().theme = static_cast<br::ui::InspectorThemeId>(tab % 4);
         menu.ForceSelectTabForTest(tab);
         ImGui::NewFrame();
         menu.Render(rt_table);
         ImGui::Render();
         ImDrawData* dd = ImGui::GetDrawData();
         assert(dd != nullptr && dd->Valid && dd->TotalVtxCount > 0 && dd->TotalIdxCount > 0);
-        std::printf("[OK] Отрисована вкладка #%d -> CmdLists=%d, Vertices=%d, Indices=%d\n",
+        std::printf("[OK] Отрисован раздел #%d (Wide 1920x1080) -> CmdLists=%d, Vertices=%d, Indices=%d\n",
                     tab + 1, dd->CmdListsCount, dd->TotalVtxCount, dd->TotalIdxCount);
     }
+
+    // Проверим адаптивное компактное отображение (узкое окно / смартфон) и дизассемблер
+    io.DisplaySize = ImVec2(800.0f, 480.0f);
+    menu.JumpToMemoryAddress(mock_elf.fake_base, "ELF Header ASM", true);
+    ImGui::NewFrame();
+    menu.Render(rt_table);
+    ImGui::Render();
+    ImDrawData* dd_compact = ImGui::GetDrawData();
+    assert(dd_compact != nullptr && dd_compact->Valid && dd_compact->TotalVtxCount > 0);
+    std::printf("[OK] Адаптивный компактный режим (800x480 + ARM64 Disasm) -> Vertices=%d\n",
+                dd_compact->TotalVtxCount);
 
     ImGui::DestroyContext(ctx);
     br::mem::SafeMemory::SetCustomReader(nullptr, nullptr);

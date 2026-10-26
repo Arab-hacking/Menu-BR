@@ -1,0 +1,193 @@
+0178ee04 sub     sp, sp, #0x1f0
+0178ee08 stp     d11, d10, [sp, #0x190]
+0178ee0c stp     d9, d8, [sp, #0x1a0]
+0178ee10 stp     x29, x30, [sp, #0x1b0]
+0178ee14 str     x28, [sp, #0x1c0]
+0178ee18 stp     x22, x21, [sp, #0x1d0]
+0178ee1c stp     x20, x19, [sp, #0x1e0]
+0178ee20 add     x29, sp, #0x1b0
+0178ee24 mrs     x22, tpidr_el0
+0178ee28 mov     x19, x0
+0178ee2c mov     w0, wzr
+0178ee30 ldr     x8, [x22, #0x28]
+0178ee34 stur    x8, [x29, #-0x28]
+0178ee38 bl      #0xe400f4
+0178ee3c bl      #0xe4277c
+0178ee40 mov     w20, w0
+0178ee44 mov     w0, wzr
+0178ee48 bl      #0xe400f4
+0178ee4c bl      #0xe42818
+0178ee50 mov     w21, w0
+0178ee54 mov     x0, x19
+0178ee58 bl      #0x178bc14
+0178ee5c ldr     x8, [x19, #0x38]
+0178ee60 strh    w0, [sp, #0x1c]
+0178ee64 add     x0, sp, #8
+0178ee68 strh    w21, [sp, #0x1a]
+0178ee6c ldr     x9, [x8, #0x38]
+0178ee70 ldr     w10, [x8, #0x40]
+0178ee74 ldr     x1, [x8, #0x48]
+0178ee78 strh    w20, [sp, #0x18]
+0178ee7c str     x9, [sp, #0x20]
+0178ee80 str     w10, [sp, #0x28]
+0178ee84 bl      #0x1767490
+0178ee88 add     x0, sp, #8
+0178ee8c bl      #0x1767060
+0178ee90 ldp     s8, s0, [sp, #0x10]
+0178ee94 ldr     s1, [x19, #0x70]
+0178ee98 ldp     s10, s9, [sp, #8]
+0178ee9c fneg    s0, s0
+0178eea0 stp     s9, s8, [sp, #0x34]
+0178eea4 stp     s0, s10, [sp, #0x2c]
+0178eea8 bl      #0x1764b24
+0178eeac fcvt    d0, s0
+0178eeb0 adrp    x8, #0x3c4000
+0178eeb4 ldr     d11, [x8, #0x350]
+0178eeb8 fcmp    d0, d11
+0178eebc b.pl    #0x178ef10
+0178eec0 fmov    s0, s10
+0178eec4 ldr     s1, [x19, #0x74]
+0178eec8 bl      #0x1764b24
+0178eecc fcvt    d0, s0
+0178eed0 fcmp    d0, d11
+0178eed4 b.pl    #0x178ef10
+0178eed8 fmov    s0, s9
+0178eedc ldr     s1, [x19, #0x78]
+0178eee0 bl      #0x1764b24
+0178eee4 fcvt    d0, s0
+0178eee8 fcmp    d0, d11
+0178eeec b.pl    #0x178ef10
+0178eef0 fmov    s0, s8
+0178eef4 ldr     s1, [x19, #0x7c]
+0178eef8 bl      #0x1764b24
+0178eefc fcvt    d0, s0
+0178ef00 fcmp    d0, d11
+0178ef04 b.pl    #0x178ef10
+0178ef08 ldr     q0, [x19, #0x70]
+0178ef0c stur    q0, [sp, #0x2c]
+0178ef10 ldr     x0, [x19, #0x38]
+0178ef14 ldr     s0, [x0, #0x4b0]
+0178ef18 ldr     s1, [x0, #0x4b8]
+0178ef1c fcvtzs  w8, s0
+0178ef20 fcvtzs  w9, s1
+0178ef24 strh    w8, [sp, #0x3c]
+0178ef28 strh    w9, [sp, #0x3e]
+0178ef2c bl      #0x1803be8
+0178ef30 cbz     x0, #0x178ef78
+0178ef34 ldr     x0, [x19, #0x38]
+0178ef38 bl      #0x1803be8
+0178ef3c ldrb    w9, [x0]
+0178ef40 ldr     w8, [x0, #8]
+0178ef44 and     w9, w9, #0x3f
+0178ef48 ldr     x0, [x19, #0x38]
+0178ef4c strb    w8, [sp, #0x65]
+0178ef50 strb    w9, [sp, #0x40]
+0178ef54 ldr     x10, [x0, #0x308]
+0178ef58 tbnz    x10, #0x23, #0x178ef94
+0178ef5c bl      #0x1816f70
+0178ef60 tbz     w0, #0, #0x178ef70
+0178ef64 ldr     x0, [x19, #0x38]
+0178ef68 bl      #0x181df1c
+0178ef6c tbz     w0, #0, #0x178f0d4
+0178ef70 mov     w8, wzr
+0178ef74 b       #0x178ef98
+0178ef78 mov     w8, wzr
+0178ef7c mov     w9, #0x3f
+0178ef80 ldr     x0, [x19, #0x38]
+0178ef84 strb    wzr, [sp, #0x65]
+0178ef88 strb    w9, [sp, #0x40]
+0178ef8c ldr     x10, [x0, #0x308]
+0178ef90 tbz     x10, #0x23, #0x178ef5c
+0178ef94 mov     w8, #1
+0178ef98 ldr     x0, [x19, #0x38]
+0178ef9c strb    w8, [sp, #0x41]
+0178efa0 ldrb    w8, [x19, #0x1f4]
+0178efa4 ldr     x9, [x0, #0x180]
+0178efa8 ldr     w10, [x0, #0x188]
+0178efac stur    x9, [sp, #0x44]
+0178efb0 str     w10, [sp, #0x4c]
+0178efb4 cbz     w8, #0x178efdc
+0178efb8 ldr     x10, [x19, #0x1f8]
+0178efbc ldr     w11, [x19, #0x200]
+0178efc0 cmp     w8, #1
+0178efc4 ldrh    w9, [x19, #0x1ee]
+0178efc8 str     x10, [sp, #0x50]
+0178efcc str     w11, [sp, #0x58]
+0178efd0 b.ne    #0x178efe8
+0178efd4 strh    w9, [sp, #0x5c]
+0178efd8 b       #0x178eff0
+0178efdc stur    xzr, [sp, #0x56]
+0178efe0 str     xzr, [sp, #0x50]
+0178efe4 b       #0x178eff0
+0178efe8 add     w8, w9, #0x7d0
+0178efec strh    w8, [sp, #0x5c]
+0178eff0 str     wzr, [sp, #0x60]
+0178eff4 bl      #0x1808724
+0178eff8 adrp    x20, #0x3121000
+0178effc add     x20, x20, #0x950
+0178f000 ldr     w9, [x19, #0x4c]
+0178f004 strb    w0, [sp, #0x64]
+0178f008 ldr     w8, [x20]
+0178f00c sub     w9, w8, w9
+0178f010 cmp     w9, #0x1f4
+0178f014 b.hi    #0x178f02c
+0178f018 add     x0, x19, #0x5c
+0178f01c add     x1, sp, #0x18
+0178f020 bl      #0x178f108
+0178f024 tbnz    w0, #0, #0x178f09c
+0178f028 ldr     w8, [x20]
+0178f02c add     x0, sp, #0x68
+0178f030 str     w8, [x19, #0x4c]
+0178f034 bl      #0x208d8f0
+0178f038 add     x0, sp, #0x68
+0178f03c add     x1, sp, #0x18
+0178f040 bl      #0x17db1ec
+0178f044 adrp    x8, #0x3613000
+0178f048 add     x8, x8, #0xa0
+0178f04c ldr     x0, [x8]
+0178f050 ldr     x8, [x0]
+0178f054 ldr     x8, [x8, #0x38]
+0178f058 add     x1, sp, #0x68
+0178f05c mov     w2, #1
+0178f060 mov     w3, #1
+0178f064 mov     w4, wzr
+0178f068 blr     x8
+0178f06c ldur    q0, [sp, #0x28]
+0178f070 ldur    q1, [sp, #0x38]
+0178f074 add     x0, sp, #0x68
+0178f078 ldur    q2, [sp, #0x48]
+0178f07c ldur    q3, [sp, #0x18]
+0178f080 stur    q0, [x19, #0x6c]
+0178f084 ldur    q0, [sp, #0x56]
+0178f088 stur    q1, [x19, #0x7c]
+0178f08c stur    q2, [x19, #0x8c]
+0178f090 stur    q0, [x19, #0x9a]
+0178f094 stur    q3, [x19, #0x5c]
+0178f098 bl      #0x208d920
+0178f09c ldr     x0, [x19, #0x38]
+0178f0a0 bl      #0x1803864
+0178f0a4 ldr     x8, [x22, #0x28]
+0178f0a8 ldur    x9, [x29, #-0x28]
+0178f0ac cmp     x8, x9
+0178f0b0 b.ne    #0x178f104
+0178f0b4 ldp     x20, x19, [sp, #0x1e0]
+0178f0b8 ldr     x28, [sp, #0x1c0]
+0178f0bc ldp     x22, x21, [sp, #0x1d0]
+0178f0c0 ldp     x29, x30, [sp, #0x1b0]
+0178f0c4 ldp     d9, d8, [sp, #0x1a0]
+0178f0c8 ldp     d11, d10, [sp, #0x190]
+0178f0cc add     sp, sp, #0x1f0
+0178f0d0 ret     
+0178f0d4 mov     w8, #2
+0178f0d8 b       #0x178ef98
+0178f0dc b       #0x178f0e0
+0178f0e0 mov     x19, x0
+0178f0e4 add     x0, sp, #0x68
+0178f0e8 bl      #0x208d920
+0178f0ec ldr     x8, [x22, #0x28]
+0178f0f0 ldur    x9, [x29, #-0x28]
+0178f0f4 cmp     x8, x9
+0178f0f8 b.ne    #0x178f104
+0178f0fc mov     x0, x19
+0178f100 bl      #0x1ca5b9c
+0178f104 bl      #0x208d420

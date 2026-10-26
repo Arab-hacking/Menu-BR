@@ -40,7 +40,13 @@ typedef struct _JavaVM JavaVM;
 #define JNI_VERSION_1_4 0x00010004
 #define JNI_VERSION_1_6 0x00010006
 
+/* НDK: JNIEXPORT даёт default visibility (иначе при -fvisibility=hidden
+   JNI_OnLoad не экспортируется) */
+#if defined(__ANDROID__)
+#define JNIEXPORT __attribute__((visibility("default")))
+#else
 #define JNIEXPORT
+#endif
 #define JNICALL
 
 #ifdef __cplusplus

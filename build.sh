@@ -31,7 +31,8 @@ build_inspector() {
     [ -x "$ZIG" ] || { echo "zig не найден: $ZIG (укажите через ZIG=...)"; exit 1; }
     mkdir -p build/obj
 
-    local CFLAGS="-target aarch64-linux-gnu -O2 -fno-stack-protector -fvisibility=hidden \
+    # -g0: zig cc по умолчанию вставляет .debug_* (5+ МБ в .so) — отключаем
+    local CFLAGS="-target aarch64-linux-gnu -O2 -g0 -fno-stack-protector -fvisibility=hidden \
 -ffunction-sections -fno-exceptions -fno-rtti -std=c++17 -D_GNU_SOURCE -D__ANDROID__ \
 -DIMGUI_IMPL_OPENGL_ES3 -Iinspector/include -Iinspector/third_party/imgui -Itools/shim_include"
 
@@ -58,22 +59,25 @@ build_inspector() {
 
     # C++ runtime shim (operator new и т.п.)
     local o="build/obj/insp_rt_shim.o"
-    [ -f "$o" ] && [ "$o" -nt src/rt_shim.c ] || "$ZIG" cc -target aarch64-linux-gnu -O2 \
+    [ -f "$o" ] && [ "$o" -nt src/rt_shim.c ] || "$ZIG" cc -target aarch64-linux-gnu -O2 -g0 \
         -fno-stack-protector -fvisibility=hidden -c src/rt_shim.c -o "$o"
 
     local OBJS
     OBJS=$(ls build/obj/insp_*.o)
 
     local SO=build/libmenu-br.so
+    # -Wl,--strip-debug: zig cc вставляет .debug_* на этапе линковки (несмотря
+    # на -g0 при компиляции) — режем прямо в линкере (~5 МБ -> ~0.5 МБ),
+    # dynsym (экспорты) сохраняется.
     link_inspector() {
         if [ -n "${FAKE:-}" ]; then
             # shellcheck disable=SC2086
             "$ZIG" cc -target aarch64-linux-gnu -shared -nostdlib -o "$SO" \
-                -Wl,-soname,libmenu-br.so $OBJS $FAKE -Wl,--gc-sections
+                -Wl,-soname,libmenu-br.so $OBJS $FAKE -Wl,--gc-sections -Wl,--strip-debug
         else
             # shellcheck disable=SC2086
             "$ZIG" cc -target aarch64-linux-gnu -shared -nostdlib -o "$SO" \
-                -Wl,-soname,libmenu-br.so $OBJS -Wl,--gc-sections
+                -Wl,-soname,libmenu-br.so $OBJS -Wl,--gc-sections -Wl,--strip-debug
         fi
     }
 

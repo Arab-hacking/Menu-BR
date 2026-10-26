@@ -1,0 +1,932 @@
+[
+  {
+    "string_va": 4512948,
+    "site": 14675372,
+    "func": 14675296,
+    "text": "N8CNetGame17StateChangedEventE"
+  },
+  {
+    "string_va": 4512948,
+    "site": 24729816,
+    "func": 24729516,
+    "text": "N8CNetGame17StateChangedEventE"
+  },
+  {
+    "string_va": 4049196,
+    "site": 15089140,
+    "func": 15088540,
+    "text": "remotePlayerAppearance"
+  },
+  {
+    "string_va": 4477950,
+    "site": 20092880,
+    "func": 20092752,
+    "text": "i18n.Chat.RPChat"
+  },
+  {
+    "string_va": 4370890,
+    "site": 20092900,
+    "func": 20092752,
+    "text": "i18n.Chat.NRPChat"
+  },
+  {
+    "string_va": 4740003,
+    "site": 21033952,
+    "func": 21033876,
+    "text": "24RemotePlayerSpawnedEvent"
+  },
+  {
+    "string_va": 4740003,
+    "site": 24857116,
+    "func": 24856468,
+    "text": "24RemotePlayerSpawnedEvent"
+  },
+  {
+    "string_va": 4740447,
+    "site": 21039008,
+    "func": 21038932,
+    "text": "26RemotePlayerUnspawnedEvent"
+  },
+  {
+    "string_va": 4740447,
+    "site": 24857908,
+    "func": 24857504,
+    "text": "26RemotePlayerUnspawnedEvent"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24734740,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24735004,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24735268,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24735532,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24735796,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24736064,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24736328,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24736656,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24736984,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24737312,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24737640,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24737968,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24738296,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24738624,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24739164,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24739484,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24739804,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24740124,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24740444,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24740764,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24741084,
+    "func": 24730352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24748804,
+    "func": 24747600,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4453238,
+    "site": 24757004,
+    "func": 24756496,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/NetGame.cpp"
+  },
+  {
+    "string_va": 4316078,
+    "site": 24734760,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"(\\\"Invalid packetId for sync struct: timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\")\""
+  },
+  {
+    "string_va": 4316078,
+    "site": 24735024,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"(\\\"Invalid packetId for sync struct: timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\")\""
+  },
+  {
+    "string_va": 4316078,
+    "site": 24735288,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"(\\\"Invalid packetId for sync struct: timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\")\""
+  },
+  {
+    "string_va": 4316078,
+    "site": 24735552,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"(\\\"Invalid packetId for sync struct: timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\")\""
+  },
+  {
+    "string_va": 4316078,
+    "site": 24735816,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"(\\\"Invalid packetId for sync struct: timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\")\""
+  },
+  {
+    "string_va": 4316078,
+    "site": 24736084,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"(\\\"Invalid packetId for sync struct: timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\")\""
+  },
+  {
+    "string_va": 4316078,
+    "site": 24736348,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"(\\\"Invalid packetId for sync struct: timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\")\""
+  },
+  {
+    "string_va": 4285867,
+    "site": 24734768,
+    "func": 24730352,
+    "text": "(Traits::syncStructId<TPacket> == packetId)"
+  },
+  {
+    "string_va": 4285867,
+    "site": 24735032,
+    "func": 24730352,
+    "text": "(Traits::syncStructId<TPacket> == packetId)"
+  },
+  {
+    "string_va": 4285867,
+    "site": 24735296,
+    "func": 24730352,
+    "text": "(Traits::syncStructId<TPacket> == packetId)"
+  },
+  {
+    "string_va": 4285867,
+    "site": 24735560,
+    "func": 24730352,
+    "text": "(Traits::syncStructId<TPacket> == packetId)"
+  },
+  {
+    "string_va": 4285867,
+    "site": 24735824,
+    "func": 24730352,
+    "text": "(Traits::syncStructId<TPacket> == packetId)"
+  },
+  {
+    "string_va": 4285867,
+    "site": 24736092,
+    "func": 24730352,
+    "text": "(Traits::syncStructId<TPacket> == packetId)"
+  },
+  {
+    "string_va": 4285867,
+    "site": 24736356,
+    "func": 24730352,
+    "text": "(Traits::syncStructId<TPacket> == packetId)"
+  },
+  {
+    "string_va": 4372578,
+    "site": 24736676,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"(\\\"Invalid player sync data: timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\")\""
+  },
+  {
+    "string_va": 4372578,
+    "site": 24737004,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"(\\\"Invalid player sync data: timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\")\""
+  },
+  {
+    "string_va": 4372578,
+    "site": 24737332,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"(\\\"Invalid player sync data: timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\")\""
+  },
+  {
+    "string_va": 4372578,
+    "site": 24737660,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"(\\\"Invalid player sync data: timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\")\""
+  },
+  {
+    "string_va": 4372578,
+    "site": 24737988,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"(\\\"Invalid player sync data: timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\")\""
+  },
+  {
+    "string_va": 4372578,
+    "site": 24738316,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"(\\\"Invalid player sync data: timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\")\""
+  },
+  {
+    "string_va": 4372578,
+    "site": 24738644,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"(\\\"Invalid player sync data: timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\")\""
+  },
+  {
+    "string_va": 4372681,
+    "site": 24739184,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"\\\"Invalid player for sync data: hasPlayerPool=%s, timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\"\""
+  },
+  {
+    "string_va": 4372681,
+    "site": 24739504,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"\\\"Invalid player for sync data: hasPlayerPool=%s, timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\"\""
+  },
+  {
+    "string_va": 4372681,
+    "site": 24739824,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"\\\"Invalid player for sync data: hasPlayerPool=%s, timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\"\""
+  },
+  {
+    "string_va": 4372681,
+    "site": 24740144,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"\\\"Invalid player for sync data: hasPlayerPool=%s, timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\"\""
+  },
+  {
+    "string_va": 4372681,
+    "site": 24740464,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"\\\"Invalid player for sync data: hasPlayerPool=%s, timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\"\""
+  },
+  {
+    "string_va": 4372681,
+    "site": 24740784,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"\\\"Invalid player for sync data: hasPlayerPool=%s, timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\"\""
+  },
+  {
+    "string_va": 4372681,
+    "site": 24741104,
+    "func": 24730352,
+    "text": "\"Expression: %s. \" \"\\\"Invalid player for sync data: hasPlayerPool=%s, timestamp=%u, id=%u, playerId=%u, packetLength=%d\\\"\""
+  },
+  {
+    "string_va": 4342364,
+    "site": 24845160,
+    "func": 24844500,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/PlayerPool.cpp"
+  },
+  {
+    "string_va": 4198643,
+    "site": 24869496,
+    "func": 24868824,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RPCs.cpp"
+  },
+  {
+    "string_va": 4198643,
+    "site": 24870704,
+    "func": 24870476,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RPCs.cpp"
+  },
+  {
+    "string_va": 4198643,
+    "site": 24876672,
+    "func": 24876352,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RPCs.cpp"
+  },
+  {
+    "string_va": 4198643,
+    "site": 24884284,
+    "func": 24881632,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RPCs.cpp"
+  },
+  {
+    "string_va": 4198643,
+    "site": 24884604,
+    "func": 24881632,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RPCs.cpp"
+  },
+  {
+    "string_va": 4198643,
+    "site": 24884936,
+    "func": 24881632,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RPCs.cpp"
+  },
+  {
+    "string_va": 4198643,
+    "site": 24885268,
+    "func": 24881632,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RPCs.cpp"
+  },
+  {
+    "string_va": 4198643,
+    "site": 24888492,
+    "func": 24888064,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RPCs.cpp"
+  },
+  {
+    "string_va": 4198643,
+    "site": 24888876,
+    "func": 24888064,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RPCs.cpp"
+  },
+  {
+    "string_va": 4198643,
+    "site": 24889628,
+    "func": 24888064,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RPCs.cpp"
+  },
+  {
+    "string_va": 4198643,
+    "site": 24890088,
+    "func": 24888064,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RPCs.cpp"
+  },
+  {
+    "string_va": 4198643,
+    "site": 24939756,
+    "func": 24939296,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RPCs.cpp"
+  },
+  {
+    "string_va": 4198643,
+    "site": 24940492,
+    "func": 24940004,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RPCs.cpp"
+  },
+  {
+    "string_va": 4285911,
+    "site": 24884300,
+    "func": 24881632,
+    "text": "\"Expression: %s. \" \"\\\"ScrCreateObject RPC: material object type isn't supported. object model id: %u; type: %u; order iterator: %u; num materials: %u\\\"\""
+  },
+  {
+    "string_va": 4198719,
+    "site": 24884620,
+    "func": 24881632,
+    "text": "\"Expression: %s. \" \"\\\"ScrCreateObject RPC: material object slot is more than max slots number. slot: %u; max slots: %u; order iterator: %u; num materials: %u\\\"\""
+  },
+  {
+    "string_va": 4358131,
+    "site": 24884952,
+    "func": 24881632,
+    "text": "\"Expression: %s. \" \"\\\"ScrCreateObject RPC: material object slot txd string length is more than buffer size. txd name string length: %u; string buffer size: %u; slot: %u; max slots: %u; order iterator: %u; num materials: %u\\\"\""
+  },
+  {
+    "string_va": 4127463,
+    "site": 24885284,
+    "func": 24881632,
+    "text": "\"Expression: %s. \" \"\\\"ScrCreateObject RPC: material object slot texture string length is more than buffer size. texture name string length: %u; string buffer size: %u; slot: %u; max slots: %u; order iterator: %u; num materials: %u\\\"\""
+  },
+  {
+    "string_va": 4299799,
+    "site": 24888508,
+    "func": 24888064,
+    "text": "\"Expression: %s. \" \"\\\"ScrSetObjectMaterial RPC: material object slot is more than max slots number. slot: %u; max slots: %u\\\"\""
+  },
+  {
+    "string_va": 4342455,
+    "site": 24888892,
+    "func": 24888064,
+    "text": "\"Expression: %s. \" \"\\\"ScrSetObjectMaterial RPC: material object type isn't supported. type: %u\\\"\""
+  },
+  {
+    "string_va": 4170870,
+    "site": 24889644,
+    "func": 24888064,
+    "text": "\"Expression: %s. \" \"\\\"ScrSetObjectMaterial RPC: material object slot txd string length is more than buffer size. txd name string length: %u; string buffer size: %u; slot: %u; max slots: %u\\\"\""
+  },
+  {
+    "string_va": 4068559,
+    "site": 24890104,
+    "func": 24888064,
+    "text": "\"Expression: %s. \" \"\\\"ScrSetObjectMaterial RPC: material object slot texture string length is more than buffer size. texture name string length: %u; string buffer size: %u; slot: %u; max slots: %u\\\"\""
+  },
+  {
+    "string_va": 4424670,
+    "site": 24939772,
+    "func": 24939296,
+    "text": "\"Expression: %s. \" \"\\\"IPLLoad RPC - name length (%d) is too long\\\"\""
+  },
+  {
+    "string_va": 4394065,
+    "site": 24940508,
+    "func": 24940004,
+    "text": "\"Expression: %s. \" \"\\\"IPLUnload RPC - name length (%d) is too long\\\"\""
+  },
+  {
+    "string_va": 4885494,
+    "site": 24978036,
+    "func": 24978028,
+    "text": "PFvP13RPCParametersE"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24986860,
+    "func": 24985992,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24987288,
+    "func": 24985992,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24988236,
+    "func": 24988004,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24988960,
+    "func": 24988692,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24989356,
+    "func": 24989300,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24990096,
+    "func": 24989300,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24990268,
+    "func": 24989300,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24990640,
+    "func": 24990592,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24991064,
+    "func": 24990920,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24992076,
+    "func": 24991840,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24992752,
+    "func": 24991840,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24992920,
+    "func": 24991840,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24993524,
+    "func": 24991840,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24997196,
+    "func": 24997144,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24998104,
+    "func": 24998076,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24999080,
+    "func": 24998312,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 24999656,
+    "func": 24998312,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 25000236,
+    "func": 24998312,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4286064,
+    "site": 25006284,
+    "func": 25006040,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/RemotePlayer.cpp"
+  },
+  {
+    "string_va": 4038792,
+    "site": 24986888,
+    "func": 24985992,
+    "text": "\"Expression: %s. \" \"\\\"Remote player OnFoot sync - move speed(%f, %f, %f) isn't valid! player id: %u\\\"\""
+  },
+  {
+    "string_va": 4342553,
+    "site": 24987320,
+    "func": 24985992,
+    "text": "\"Expression: %s. \" \"\\\"Remote player OnFoot sync - quat(%f, %f, %f, %f) isn't valid! player id: %u\\\"\""
+  },
+  {
+    "string_va": 4141830,
+    "site": 24988260,
+    "func": 24988004,
+    "text": "!(m_vecOnFootTargetSpeed).IsNaN()"
+  },
+  {
+    "string_va": 4184631,
+    "site": 24990120,
+    "func": 24989300,
+    "text": "!(m_vecInCarTargetSpeed).IsNaN()"
+  },
+  {
+    "string_va": 4342654,
+    "site": 24999096,
+    "func": 24998312,
+    "text": "\"Expression: %s. \" \"\\\"Remote player InCar sync - move speed(%f, %f, %f) isn't valid! player id: %u; vehicle id: %u, in sync: %u\\\"\""
+  },
+  {
+    "string_va": 4358357,
+    "site": 24999672,
+    "func": 24998312,
+    "text": "\"Expression: %s. \" \"\\\"Remote player InCar sync - quat(%f, %f, %f, %f) isn't valid! player id: %u; vehicle id: %u, in sync: %u\\\"\""
+  },
+  {
+    "string_va": 4214077,
+    "site": 25000252,
+    "func": 24998312,
+    "text": "\"Expression: %s. \" \"\\\"Remote player InCar sync - pos(%f, %f, %f) isn't valid! player id: %u; vehicle id: %u, in sync: %u\\\"\""
+  },
+  {
+    "string_va": 4214004,
+    "site": 25006300,
+    "func": 25006040,
+    "text": "\"Expression: %s. \" \"\\\"Crane sync received for vehicle with wrong type\\\"\""
+  },
+  {
+    "string_va": 4112270,
+    "site": 25030292,
+    "func": 25030196,
+    "text": "/home/gitlab-runner/builds/bbBjo2Hey/0/client/BRClient/src/network/VehiclePool.cpp"
+  },
+  {
+    "string_va": 4358151,
+    "site": 25036712,
+    "func": 25036604,
+    "text": "\"Expression: %s. \" \"\\\"ScrCreateObject RPC: material object slot txd string length is more than buffer size. txd name string length: %u; string buffer size: %u; slot: %u; max slots: %u; order iterator: %u; num materials: %u\\\"\""
+  },
+  {
+    "string_va": 4112362,
+    "site": 25180760,
+    "func": 25180260,
+    "text": "OnFootSyncSend"
+  },
+  {
+    "string_va": 4394165,
+    "site": 25181440,
+    "func": 25181160,
+    "text": "\"Expression: %s. \" \"\\\"Call CPed::GetWeapon(void) after CPed was destructed\\\"\""
+  },
+  {
+    "string_va": 4440076,
+    "site": 25275088,
+    "func": 25274628,
+    "text": "m_vehDoor == 0 || (CVehicle::ComponentIdToDoor(m_vehDoor) && car->DoesDoorExist(*CVehicle::ComponentIdToDoor(m_vehDoor)))"
+  },
+  {
+    "string_va": 4342924,
+    "site": 25289572,
+    "func": 25289400,
+    "text": "\"Expression: %s. \" \"\\\"Scaling is unsupported for CPed\\\"\""
+  },
+  {
+    "string_va": 4141898,
+    "site": 25319036,
+    "func": 25318796,
+    "text": "m_carInObjective->DoesDoorExist(*CVehicle::ComponentIdToDoor(m_vehDoor))"
+  },
+  {
+    "string_va": 4241780,
+    "site": 25411084,
+    "func": 25411028,
+    "text": "CPedIK"
+  },
+  {
+    "string_va": 4394539,
+    "site": 25881000,
+    "func": 25880776,
+    "text": "CalcPedShadowValues"
+  },
+  {
+    "string_va": 4394539,
+    "site": 25881060,
+    "func": 25880776,
+    "text": "CalcPedShadowValues"
+  },
+  {
+    "string_va": 4394539,
+    "site": 25881120,
+    "func": 25880776,
+    "text": "CalcPedShadowValues"
+  },
+  {
+    "string_va": 4394539,
+    "site": 25881180,
+    "func": 25880776,
+    "text": "CalcPedShadowValues"
+  },
+  {
+    "string_va": 4394539,
+    "site": 25881240,
+    "func": 25880776,
+    "text": "CalcPedShadowValues"
+  },
+  {
+    "string_va": 4394539,
+    "site": 25881300,
+    "func": 25880776,
+    "text": "CalcPedShadowValues"
+  },
+  {
+    "string_va": 4358147,
+    "site": 26512984,
+    "func": 26512300,
+    "text": "\"Expression: %s. \" \"\\\"ScrCreateObject RPC: material object slot txd string length is more than buffer size. txd name string length: %u; string buffer size: %u; slot: %u; max slots: %u; order iterator: %u; num materials: %u\\\"\""
+  },
+  {
+    "string_va": 4440585,
+    "site": 26808024,
+    "func": 26807840,
+    "text": "\"Expression: %s. \" \"\\\"Scaling is unsupported for CVehicle\\\"\""
+  },
+  {
+    "string_va": 4215267,
+    "site": 27614108,
+    "func": 27613920,
+    "text": "HandleRPCPacket id=%d bytes=%d"
+  },
+  {
+    "string_va": 4344670,
+    "site": 27614264,
+    "func": 27613920,
+    "text": "[%s] Got malformed ID_RPC packet, values %d < %d"
+  },
+  {
+    "string_va": 4395984,
+    "site": 27625812,
+    "func": 27625548,
+    "text": "[%s] modified packets exceeded the limit, disconnecting this remote system"
+  },
+  {
+    "string_va": 8479125,
+    "site": 27632052,
+    "func": 27632044,
+    "text": "ZN7RakPeer32AssignPlayerIDToRemoteSystemListE8PlayerIDN18RemoteSystemStruct11ConnectModeEE3$_0"
+  },
+  {
+    "string_va": 8479350,
+    "site": 27634236,
+    "func": 27634228,
+    "text": "ZN7RakPeer23CloseConnectionInternalE8PlayerID22EConnectionCloseReasonE3$_0"
+  },
+  {
+    "string_va": 4360214,
+    "site": 27656768,
+    "func": 27655420,
+    "text": "[%s]: duplicate packet received - 1"
+  },
+  {
+    "string_va": 4344748,
+    "site": 27657016,
+    "func": 27655420,
+    "text": "[%s]: invalid packet received - 1"
+  },
+  {
+    "string_va": 4454723,
+    "site": 27657408,
+    "func": 27655420,
+    "text": "[%s]: invalid packet - 2"
+  },
+  {
+    "string_va": 4330222,
+    "site": 27657800,
+    "func": 27655420,
+    "text": "[%s]: out of order packet"
+  },
+  {
+    "string_va": 4425906,
+    "site": 27658424,
+    "func": 27655420,
+    "text": "[%s]: duplicate packet received - 2"
+  },
+  {
+    "string_va": 4129031,
+    "site": 27658560,
+    "func": 27655420,
+    "text": "[%s]: failed to deserialize internal packet"
+  },
+  {
+    "string_va": 4156508,
+    "site": 27660412,
+    "func": 27659816,
+    "text": "[%s] Dropping a split packet [%d %d] - invalid count"
+  },
+  {
+    "string_va": 4186328,
+    "site": 27660560,
+    "func": 27659816,
+    "text": "[%s] Dropping a split packet [%d %d %d %d] - invalid length"
+  },
+  {
+    "string_va": 4374141,
+    "site": 27660776,
+    "func": 27659816,
+    "text": "[%s] Dropping a bad checksum packet - reported 0x%x, actual 0x%x"
+  },
+  {
+    "string_va": 4273273,
+    "site": 27660916,
+    "func": 27659816,
+    "text": "[%s] Dropping a split packet [%d %d %d] - count mismatch, expected %d"
+  },
+  {
+    "string_va": 4396091,
+    "site": 27660984,
+    "func": 27659816,
+    "text": "[%s] Dropping a split packet [%d %d %d] - invalid index"
+  },
+  {
+    "string_va": 4186284,
+    "site": 27668816,
+    "func": 27667712,
+    "text": "write packet id=%d messageNumber=%d bits=%d"
+  },
+  {
+    "string_va": 4157844,
+    "site": 28356436,
+    "func": 28355080,
+    "text": "assertion failed: ret==packet_frame_size"
+  },
+  {
+    "string_va": 4397961,
+    "site": 28356484,
+    "func": 28355080,
+    "text": "assertion failed: ret==frame_size-packet_frame_size"
+  },
+  {
+    "string_va": 4058232,
+    "site": 28391548,
+    "func": 28391240,
+    "text": "/Users/evgeny/Projects/BLACKRUSSIA/Game/BRClient_Native/vendor/opus/opus-1.4/src/repacketizer.c"
+  },
+  {
+    "string_va": 4290103,
+    "site": 28580156,
+    "func": 28579228,
+    "text": "assertion failed: psEncC->indices.NLSFInterpCoef_Q2 == 4 || ( psEncC->useInterpolatedNLSFs && !psEncC->first_frame_after_reset && psEncC->nb_subfr == MAX_NB_SUBFR )"
+  },
+  {
+    "string_va": 4244951,
+    "site": 28598644,
+    "func": 28598008,
+    "text": "assertion failed: psEncC->useInterpolatedNLSFs == 1 || psEncC->indices.NLSFInterpCoef_Q2 == ( 1 << 2 )"
+  },
+  {
+    "string_va": 4159203,
+    "site": 28874896,
+    "func": 28873636,
+    "text": "Failed to encode DoH packet [%d]"
+  },
+  {
+    "string_va": 8961444,
+    "site": 30653464,
+    "func": null,
+    "text": "yyyZhniZzzzZbarAnmrAgneBlryCaveDroeGkerGrjuGuruGgnaHinaHrbeHariHadnKanaKooaLntaLmylMayrOlmaTuleTiahTtbiTopoBiarBsnaCrehCihtErmhKgnoMrmyMmagOrnuRhniScrySaahTiiiYtrsDhtoGlatIdhuBonaHglgTbgaTtrpCbmiLbniLamsOwahSelaTragUiguBtpoCgalGrahKulaToepXolySgnfTilaBxusXookNgahPxnhPiraCmahCilaKcpeLicyLidyLkclOgnjRruaSdnuSiiaVtsvAumaBpygEimrAilhPitrPavaJihtKusiLietMbraShkrOrmaSanaLtvaTktaBharBdnaMmkaCcreMoreMdrlP"
+  },
+  {
+    "string_va": 8961444,
+    "site": 30653484,
+    "func": null,
+    "text": "yyyZhniZzzzZbarAnmrAgneBlryCaveDroeGkerGrjuGuruGgnaHinaHrbeHariHadnKanaKooaLntaLmylMayrOlmaTuleTiahTtbiTopoBiarBsnaCrehCihtErmhKgnoMrmyMmagOrnuRhniScrySaahTiiiYtrsDhtoGlatIdhuBonaHglgTbgaTtrpCbmiLbniLamsOwahSelaTragUiguBtpoCgalGrahKulaToepXolySgnfTilaBxusXookNgahPxnhPiraCmahCilaKcpeLicyLidyLkclOgnjRruaSdnuSiiaVtsvAumaBpygEimrAilhPitrPavaJihtKusiLietMbraShkrOrmaSanaLtvaTktaBharBdnaMmkaCcreMoreMdrlP"
+  },
+  {
+    "string_va": 8962092,
+    "site": 30653752,
+    "func": null,
+    "text": "yyyZhniZzzzZbarAnmrAgneBlryCaveDroeGkerGrjuGuruGgnaHinaHrbeHariHadnKanaKooaLntaLmylMayrOlmaTuleTiahTtbiTopoBiarBsnaCrehCihtErmhKgnoMrmyMmagOrnuRhniScrySaahTiiiYtrsDhtoGlatIdhuBonaHglgTbgaTtrpCbmiLbniLamsOwahSelaTragUiguBtpoCgalGrahKulaToepXolySgnfTilaBxusXookNgahPxnhPiraCmahCilaKcpeLicyLidyLkclOgnjRruaSdnuSiiaVtsvAumaBpygEimrAilhPitrPavaJihtKusiLietMbraShkrOrmaSanaLtvaTktaBharBdnaMmkaCcreMoreMdrlP"
+  },
+  {
+    "string_va": 8962092,
+    "site": 30654188,
+    "func": null,
+    "text": "yyyZhniZzzzZbarAnmrAgneBlryCaveDroeGkerGrjuGuruGgnaHinaHrbeHariHadnKanaKooaLntaLmylMayrOlmaTuleTiahTtbiTopoBiarBsnaCrehCihtErmhKgnoMrmyMmagOrnuRhniScrySaahTiiiYtrsDhtoGlatIdhuBonaHglgTbgaTtrpCbmiLbniLamsOwahSelaTragUiguBtpoCgalGrahKulaToepXolySgnfTilaBxusXookNgahPxnhPiraCmahCilaKcpeLicyLidyLkclOgnjRruaSdnuSiiaVtsvAumaBpygEimrAilhPitrPavaJihtKusiLietMbraShkrOrmaSanaLtvaTktaBharBdnaMmkaCcreMoreMdrlP"
+  }
+]

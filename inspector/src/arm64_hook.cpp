@@ -1,22 +1,9 @@
 #include "arm64_hook.hpp"
 
-#include <cerrno>
-#include <cstdio>
 #include <cstring>
 #include <mutex>
 #include <sys/mman.h>
 #include <unistd.h>
-
-#if defined(__ANDROID__)
-#include <android/log.h>
-#define BR_HOOK_LOGI(fmt, ...) __android_log_print(ANDROID_LOG_INFO, "BRHook", fmt, ##__VA_ARGS__)
-#define BR_HOOK_LOGW(fmt, ...) __android_log_print(ANDROID_LOG_WARN, "BRHook", fmt, ##__VA_ARGS__)
-#define BR_HOOK_LOGE(fmt, ...) __android_log_print(ANDROID_LOG_ERROR, "BRHook", fmt, ##__VA_ARGS__)
-#else
-#define BR_HOOK_LOGI(fmt, ...) std::fprintf(stdout, "[BRHook][INFO] " fmt "\n", ##__VA_ARGS__)
-#define BR_HOOK_LOGW(fmt, ...) std::fprintf(stdout, "[BRHook][WARN] " fmt "\n", ##__VA_ARGS__)
-#define BR_HOOK_LOGE(fmt, ...) std::fprintf(stderr, "[BRHook][ERR ] " fmt "\n", ##__VA_ARGS__)
-#endif
 
 namespace br::hook {
 
@@ -24,7 +11,19 @@ namespace {
 ExternalHookBackendFn   g_external_backend = nullptr;
 std::mutex              g_hook_mutex;
 std::vector<HookRecord> g_hooks;
-const char*             g_tramp_file_hint = nullptr;
+
+// Размер страницы Android (aarch64: всегда 4096).
+// ВАЖНО (build-compat для кросс-сборки zig): НЕ sysconf(_SC_PAGESIZE) —
+// в glibc-хедерах zig константа _SC_PAGESIZE = 16, а bionic sysconf(16)
+// вернёт не размер страницы (на девайсе вышло 16 -> mprotect span=16 ->
+// отказ во всех хуках). bionic getpagesize() есть в libc; fallback 4096.
+size_t BrPageSize() {
+    const long p = ::getpagesize();
+    if (p >= 4096 && p <= (1L << 21)) {
+        return static_cast<size_t>(p);
+    }
+    return 4096;
+}
 
 // Кодирование 64-битной константы в регистр Xd (0..30) через MOVZ + до трёх MOVK
 void EmitLoadImm64(uint32_t rd, uint64_t value, std::vector<uint32_t>& out) {
@@ -54,96 +53,6 @@ void EmitLoadImm64(uint32_t rd, uint64_t value, std::vector<uint32_t>& out) {
 
 void Arm64Hook::SetExternalBackend(ExternalHookBackendFn backend_fn) noexcept {
     g_external_backend = backend_fn;
-}
-
-void Arm64Hook::SetTrampolineFileHint(const char* path) noexcept {
-    g_tramp_file_hint = path ? path : nullptr;
-}
-
-// File-backed RWX-маппинг: RW-маппинг хвоста первого exec-сегмента подсказанного
-// ELF, затем mprotect RX. Обходит запрет анонимного execmem (SELinux), если
-// device разрешает file-backed exec.
-void* AllocateTrampolineFileBacked(const void* tramp_words, size_t tramp_bytes,
-                                               size_t alloc_size, size_t page_size) {
-    if (!g_tramp_file_hint) {
-        return nullptr;
-    }
-    FILE* fp = std::fopen(g_tramp_file_hint, "rb");
-    if (!fp) {
-        BR_HOOK_LOGE("tramp file-backed: fopen(%s) не удался", g_tramp_file_hint);
-        return nullptr;
-    }
-
-    struct Ehdr64 {
-        unsigned char e_ident[16];
-        uint16_t e_type, e_machine;
-        uint32_t e_version;
-        uint64_t e_entry, e_phoff;
-        uint64_t e_shoff;
-        uint32_t e_flags;
-        uint16_t e_ehsize, e_phentsize, e_phnum;
-        uint16_t e_shentsize, e_shnum, e_shstrndx;
-    } eh{};
-    size_t exec_off = 0;
-    uint64_t exec_filesz = 0;
-
-    if (std::fread(&eh, 1, sizeof(eh), fp) == sizeof(eh) &&
-        std::memcmp(eh.e_ident, "\x7f" "ELF", 4) == 0 &&
-        eh.e_phnum > 0 && eh.e_phnum <= 128 &&
-        std::fseek(fp, (long)eh.e_phoff, SEEK_SET) == 0) {
-        struct Phdr64 {
-            uint32_t p_type, p_flags;
-            uint64_t p_offset, p_vaddr, p_paddr, p_filesz, p_memsz, p_align;
-        } ph{};
-        for (uint16_t i = 0; i < eh.e_phnum; ++i) {
-            if (std::fread(&ph, 1, sizeof(ph), fp) != sizeof(ph)) break;
-            if (ph.p_type == 1 && (ph.p_flags & 1) && ph.p_filesz >= page_size) {
-                exec_off = (size_t)ph.p_offset;
-                exec_filesz = ph.p_filesz;
-                break;
-            }
-        }
-    }
-    std::fclose(fp);
-
-    if (exec_off == 0) {
-        BR_HOOK_LOGE("tramp file-backed: exec-сегмент не найден в %s", g_tramp_file_hint);
-        return nullptr;
-    }
-
-    const size_t map_size = (alloc_size + page_size - 1) & ~(page_size - 1);
-    // Берём хвост exec-сегмента: MAP_PRIVATE не трогает файл до записи,
-    // а запись уйдёт в copy-on-write-страницы, оригинал цел
-    const size_t seg_tail = (exec_filesz >= (map_size + page_size)) ? (exec_filesz - map_size) : 0;
-
-    // Открыть fd заново под mmap
-    FILE* fp2 = std::fopen(g_tramp_file_hint, "rb");
-    if (!fp2) {
-        return nullptr;
-    }
-    const int fd = fileno(fp2);
-    std::fclose(fp2);
-    if (fd < 0) {
-        return nullptr;
-    }
-
-    // RW-маппинг (без exec) — всегда разрешён для своих файлов
-    void* p = ::mmap(nullptr, map_size, PROT_READ | PROT_WRITE,
-                     MAP_PRIVATE, fd, (off_t)(exec_off + seg_tail));
-    if (p == MAP_FAILED) {
-        BR_HOOK_LOGE("tramp file-backed: mmap RW failed errno=%d", errno);
-        return nullptr;
-    }
-    // Пишем трэмплин пока RW, затем RX
-    std::memcpy(p, tramp_words, tramp_bytes);
-    FlushInstructionCache(p, tramp_bytes);
-    if (::mprotect(p, map_size, PROT_READ | PROT_EXEC) != 0) {
-        BR_HOOK_LOGE("tramp file-backed: mprotect RX failed errno=%d", errno);
-        ::munmap(p, map_size);
-        return nullptr;
-    }
-    BR_HOOK_LOGI("tramp file-backed OK: %s @ %p (map_size=%zu)", g_tramp_file_hint, p, map_size);
-    return p;
 }
 
 void Arm64Hook::EncodeAbsoluteJumpX17(uintptr_t dest_addr, uint32_t out_words[4]) noexcept {
@@ -253,58 +162,23 @@ bool Arm64Hook::Install(void* target, void* detour, void** out_original) {
 
     std::vector<uint32_t> tramp_words;
     if (!BuildRelocatedTrampoline(orig_insns, target_va, tramp_words)) {
-        // Диагностика: какие инструкции в прологе и почему билдер отказал
-        char insns[128] = {};
-        for (int i = 0; i < 4; ++i) {
-            std::snprintf(insns + i * 10, sizeof(insns) - i * 10, "%s%08x", i ? " " : "", orig_insns[i]);
-        }
-        int bad_idx = -1;
-        for (int i = 0; i < 4; ++i) {
-            const uint32_t insn = orig_insns[i];
-            if (((insn & 0xFF000010U) == 0x54000000U) ||
-                ((insn & 0x7E000000U) == 0x34000000U) ||
-                ((insn & 0x7E000000U) == 0x36000000U) ||
-                ((insn & 0x3B000000U) == 0x18000000U)) {
-                bad_idx = i;
-                break;
-            }
-        }
-        BR_HOOK_LOGE("Trampoline builder rejected @ 0x%lx: insns=[%s] bad_idx=%d "
-                     "(B.cond/CBZ/TBZ/LDR-literal запрещены в 16-байтовом прологе)",
-                     static_cast<unsigned long>(target_va), insns, bad_idx);
         return false;
     }
 
     const size_t tramp_bytes = tramp_words.size() * sizeof(uint32_t);
-    const size_t page_size   = static_cast<size_t>(::sysconf(_SC_PAGESIZE));
+    const size_t page_size   = BrPageSize();
     const size_t alloc_size  = (tramp_bytes + page_size - 1) & ~(page_size - 1);
 
-    // Вариант 1: анонимный RWX
     void* tramp_mem = ::mmap(nullptr, alloc_size, PROT_READ | PROT_WRITE,
                              MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (tramp_mem != MAP_FAILED) {
-        std::memcpy(tramp_mem, tramp_words.data(), tramp_bytes);
-        FlushInstructionCache(tramp_mem, tramp_bytes);
-        if (::mprotect(tramp_mem, alloc_size, PROT_READ | PROT_EXEC) == 0) {
-            BR_HOOK_LOGI("Trampoline anon-RWX OK: 0x%lx -> %p (%zu B) [hint=%s]",
-                         static_cast<unsigned long>(target_va), tramp_mem, alloc_size,
-                         g_tramp_file_hint ? g_tramp_file_hint : "-");
-        } else {
-            BR_HOOK_LOGE("Trampoline anon: mprotect RX failed errno=%d — пробую file-backed", errno);
-            ::munmap(tramp_mem, alloc_size);
-            tramp_mem = nullptr;
-        }
-    } else {
-        BR_HOOK_LOGE("Trampoline anon: mmap failed errno=%d — пробую file-backed", errno);
+    if (tramp_mem == MAP_FAILED) {
+        return false;
     }
 
-    // Вариант 2: file-backed (RW-маппинг exec-сегмента своего файла -> RX)
-    if (tramp_mem == nullptr) {
-        tramp_mem = AllocateTrampolineFileBacked(tramp_words.data(), tramp_bytes,
-                                                 alloc_size, page_size);
-    }
-    if (tramp_mem == nullptr) {
-        BR_HOOK_LOGE("Trampoline: оба варианта RWX провалились (anon и file-backed)");
+    std::memcpy(tramp_mem, tramp_words.data(), tramp_bytes);
+    FlushInstructionCache(tramp_mem, tramp_bytes);
+    if (::mprotect(tramp_mem, alloc_size, PROT_READ | PROT_EXEC) != 0) {
+        ::munmap(tramp_mem, alloc_size);
         return false;
     }
 
@@ -314,8 +188,6 @@ bool Arm64Hook::Install(void* target, void* detour, void** out_original) {
     const size_t    patch_span = static_cast<size_t>(page_end - page_start);
 
     if (::mprotect(reinterpret_cast<void*>(page_start), patch_span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-        BR_HOOK_LOGE("mprotect(target_page=0x%lx, span=%zu, RWX) failed errno=%d",
-                     static_cast<unsigned long>(page_start), patch_span, errno);
         ::munmap(tramp_mem, alloc_size);
         return false;
     }
@@ -344,7 +216,7 @@ bool Arm64Hook::Install(void* target, void* detour, void** out_original) {
 void Arm64Hook::RemoveAll() noexcept {
     std::lock_guard<std::mutex> lock(g_hook_mutex);
 #if defined(__aarch64__)
-    const size_t page_size = static_cast<size_t>(::sysconf(_SC_PAGESIZE));
+    const size_t page_size = BrPageSize();
     for (auto it = g_hooks.rbegin(); it != g_hooks.rend(); ++it) {
         if (!it->active || it->used_external) {
             continue;

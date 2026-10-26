@@ -1,0 +1,146 @@
+0178e904 sub     sp, sp, #0x1b0
+0178e908 stp     x29, x30, [sp, #0x150]
+0178e90c stp     x28, x27, [sp, #0x160]
+0178e910 stp     x26, x25, [sp, #0x170]
+0178e914 stp     x24, x23, [sp, #0x180]
+0178e918 stp     x22, x21, [sp, #0x190]
+0178e91c stp     x20, x19, [sp, #0x1a0]
+0178e920 add     x29, sp, #0x150
+0178e924 mrs     x23, tpidr_el0
+0178e928 mov     x19, x0
+0178e92c mov     w0, wzr
+0178e930 ldr     x8, [x23, #0x28]
+0178e934 stur    x8, [x29, #-8]
+0178e938 bl      #0xe400f4
+0178e93c bl      #0xe4277c
+0178e940 mov     w20, w0
+0178e944 mov     w0, wzr
+0178e948 bl      #0xe400f4
+0178e94c bl      #0xe42818
+0178e950 mov     w21, w0
+0178e954 mov     x0, x19
+0178e958 bl      #0x178bc14
+0178e95c ldr     x8, [x19, #0x40]
+0178e960 ldrh    w24, [x8, #0x434]
+0178e964 mov     w8, #0xffff
+0178e968 cmp     w24, w8
+0178e96c strh    w24, [sp, #0xc]
+0178e970 b.eq    #0x178eaf0
+0178e974 mov     w22, w0
+0178e978 ldr     x0, [x19, #0x38]
+0178e97c strh    w20, [sp, #0x14]
+0178e980 strh    w21, [sp, #0x16]
+0178e984 ldr     s0, [x0, #0x4b0]
+0178e988 ldr     s1, [x0, #0x4b8]
+0178e98c strh    w22, [sp, #0x18]
+0178e990 fcvtzs  w26, s0
+0178e994 fcvtzs  w25, s1
+0178e998 strh    w26, [sp, #0x10]
+0178e99c strh    w25, [sp, #0x12]
+0178e9a0 bl      #0x1805da4
+0178e9a4 ldr     x8, [x19, #0x38]
+0178e9a8 and     w27, w0, #0x7f
+0178e9ac strb    w27, [sp, #0xe]
+0178e9b0 mov     x0, x8
+0178e9b4 bl      #0x1803be8
+0178e9b8 cbz     x0, #0x178e9d0
+0178e9bc ldr     x0, [x19, #0x38]
+0178e9c0 bl      #0x1803be8
+0178e9c4 ldrb    w8, [x0]
+0178e9c8 and     w9, w8, #0x3f
+0178e9cc b       #0x178e9d4
+0178e9d0 mov     w9, #0x3f
+0178e9d4 adrp    x8, #0x3121000
+0178e9d8 add     x8, x8, #0x950
+0178e9dc ldr     x10, [x19, #0x38]
+0178e9e0 ldr     w11, [x19, #0x54]
+0178e9e4 strb    w9, [sp, #0xf]
+0178e9e8 ldr     w8, [x8]
+0178e9ec ldr     x12, [x10, #0x38]
+0178e9f0 ldr     w10, [x10, #0x40]
+0178e9f4 sub     w11, w8, w11
+0178e9f8 stur    x12, [sp, #0x1c]
+0178e9fc cmp     w11, #0x1f4
+0178ea00 str     w10, [sp, #0x24]
+0178ea04 b.hi    #0x178ea98
+0178ea08 ldrh    w10, [x19, #0xf0]
+0178ea0c cmp     w10, w24
+0178ea10 b.ne    #0x178ea98
+0178ea14 ldrb    w10, [x19, #0xf2]
+0178ea18 cmp     w10, w27
+0178ea1c b.ne    #0x178ea98
+0178ea20 ldrb    w10, [x19, #0xf3]
+0178ea24 cmp     w10, w9
+0178ea28 b.ne    #0x178ea98
+0178ea2c ldrh    w9, [x19, #0xf4]
+0178ea30 cmp     w9, w26
+0178ea34 b.ne    #0x178ea98
+0178ea38 ldrh    w9, [x19, #0xf6]
+0178ea3c cmp     w9, w25
+0178ea40 b.ne    #0x178ea98
+0178ea44 ldrh    w9, [x19, #0xf8]
+0178ea48 cmp     w9, w20, uxth
+0178ea4c b.ne    #0x178ea98
+0178ea50 ldrh    w9, [x19, #0xfa]
+0178ea54 cmp     w9, w21, uxth
+0178ea58 b.ne    #0x178ea98
+0178ea5c ldrh    w9, [x19, #0xfc]
+0178ea60 cmp     w9, w22, uxth
+0178ea64 b.ne    #0x178ea98
+0178ea68 ldr     s0, [x19, #0x100]
+0178ea6c ldr     s1, [sp, #0x1c]
+0178ea70 fcmp    s0, s1
+0178ea74 b.ne    #0x178ea98
+0178ea78 ldr     s0, [x19, #0x104]
+0178ea7c ldr     s1, [sp, #0x20]
+0178ea80 fcmp    s0, s1
+0178ea84 b.ne    #0x178ea98
+0178ea88 ldr     s0, [x19, #0x108]
+0178ea8c ldr     s1, [sp, #0x24]
+0178ea90 fcmp    s0, s1
+0178ea94 b.eq    #0x178eaf0
+0178ea98 add     x0, sp, #0x28
+0178ea9c str     w8, [x19, #0x54]
+0178eaa0 bl      #0x208d8f0
+0178eaa4 add     x0, sp, #0x28
+0178eaa8 add     x1, sp, #0xc
+0178eaac bl      #0x17dc41c
+0178eab0 adrp    x8, #0x3613000
+0178eab4 add     x8, x8, #0xa0
+0178eab8 ldr     x0, [x8]
+0178eabc ldr     x8, [x0]
+0178eac0 ldr     x8, [x8, #0x38]
+0178eac4 add     x1, sp, #0x28
+0178eac8 mov     w2, #1
+0178eacc mov     w3, #1
+0178ead0 mov     w4, wzr
+0178ead4 blr     x8
+0178ead8 ldur    q0, [sp, #0xc]
+0178eadc ldur    q1, [sp, #0x18]
+0178eae0 add     x0, sp, #0x28
+0178eae4 str     q0, [x19, #0xf0]
+0178eae8 stur    q1, [x19, #0xfc]
+0178eaec bl      #0x208d920
+0178eaf0 ldr     x8, [x23, #0x28]
+0178eaf4 ldur    x9, [x29, #-8]
+0178eaf8 cmp     x8, x9
+0178eafc b.ne    #0x178eb48
+0178eb00 ldp     x20, x19, [sp, #0x1a0]
+0178eb04 ldp     x22, x21, [sp, #0x190]
+0178eb08 ldp     x24, x23, [sp, #0x180]
+0178eb0c ldp     x26, x25, [sp, #0x170]
+0178eb10 ldp     x28, x27, [sp, #0x160]
+0178eb14 ldp     x29, x30, [sp, #0x150]
+0178eb18 add     sp, sp, #0x1b0
+0178eb1c ret     
+0178eb20 b       #0x178eb24
+0178eb24 mov     x19, x0
+0178eb28 add     x0, sp, #0x28
+0178eb2c bl      #0x208d920
+0178eb30 ldr     x8, [x23, #0x28]
+0178eb34 ldur    x9, [x29, #-8]
+0178eb38 cmp     x8, x9
+0178eb3c b.ne    #0x178eb48
+0178eb40 mov     x0, x19
+0178eb44 bl      #0x1ca5b9c
+0178eb48 bl      #0x208d420

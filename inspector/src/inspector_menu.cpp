@@ -1,161 +1,62 @@
 #include "inspector_menu.hpp"
+#include "inspector_ui_helpers.hpp"
+#include "safe_memory.hpp"
+#include "mod_features.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <cinttypes>
+#include <cmath>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 
 #include "imgui.h"
 #include "imgui_internal.h"
-#include "arm64_hook.hpp"
-#include "safe_memory.hpp"
-#include "mod_features.hpp"
 
 namespace br::ui {
 
 namespace {
 
-uint64_t MonotonicNowMs() noexcept {
-    using namespace std::chrono;
-    return static_cast<uint64_t>(
-        duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
-}
-
-bool ContainsCaseInsensitive(const std::string& haystack, const char* needle) noexcept {
-    if (!needle || needle[0] == '\0') {
-        return true;
-    }
-    const size_t nlen = std::strlen(needle);
-    if (nlen > haystack.size()) {
-        return false;
-    }
-    for (size_t i = 0; i + nlen <= haystack.size(); ++i) {
-        bool match = true;
-        for (size_t j = 0; j < nlen; ++j) {
-            unsigned char a = static_cast<unsigned char>(haystack[i + j]);
-            unsigned char b = static_cast<unsigned char>(needle[j]);
-            if (a >= 'A' && a <= 'Z') a = static_cast<unsigned char>(a - 'A' + 'a');
-            if (b >= 'A' && b <= 'Z') b = static_cast<unsigned char>(b - 'A' + 'a');
-            if (a != b) {
-                match = false;
-                break;
-            }
-        }
-        if (match) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// Строго изолированная RAII-тема: не модифицирует глобальный GImGui->Style клиента навсегда
-class ScopedInspectorTheme {
-public:
-    explicit ScopedInspectorTheme(float scale) {
-        const float s = std::clamp(scale, 0.85f, 2.25f);
-
-        PushVar(ImGuiStyleVar_WindowRounding,    10.0f * s);
-        PushVar(ImGuiStyleVar_ChildRounding,     8.0f * s);
-        PushVar(ImGuiStyleVar_FrameRounding,     6.0f * s);
-        PushVar(ImGuiStyleVar_PopupRounding,     8.0f * s);
-        PushVar(ImGuiStyleVar_ScrollbarRounding, 8.0f * s);
-        PushVar(ImGuiStyleVar_GrabRounding,      6.0f * s);
-        PushVar(ImGuiStyleVar_TabRounding,       6.0f * s);
-        PushVar(ImGuiStyleVar_WindowBorderSize,  1.0f);
-        PushVar(ImGuiStyleVar_FramePadding,      ImVec2(10.0f * s, 7.0f * s));
-        PushVar(ImGuiStyleVar_ItemSpacing,       ImVec2(9.0f * s, 7.0f * s));
-        PushVar(ImGuiStyleVar_ScrollbarSize,     16.0f * s);
-
-        PushCol(ImGuiCol_WindowBg,             ImVec4(0.06f, 0.08f, 0.11f, 0.95f));
-        PushCol(ImGuiCol_ChildBg,              ImVec4(0.09f, 0.11f, 0.15f, 0.90f));
-        PushCol(ImGuiCol_PopupBg,              ImVec4(0.08f, 0.10f, 0.14f, 0.98f));
-        PushCol(ImGuiCol_Border,               ImVec4(0.18f, 0.25f, 0.34f, 0.80f));
-        PushCol(ImGuiCol_FrameBg,              ImVec4(0.12f, 0.16f, 0.22f, 1.00f));
-        PushCol(ImGuiCol_FrameBgHovered,       ImVec4(0.17f, 0.23f, 0.32f, 1.00f));
-        PushCol(ImGuiCol_FrameBgActive,        ImVec4(0.20f, 0.29f, 0.40f, 1.00f));
-        PushCol(ImGuiCol_TitleBg,              ImVec4(0.05f, 0.07f, 0.10f, 1.00f));
-        PushCol(ImGuiCol_TitleBgActive,        ImVec4(0.07f, 0.12f, 0.19f, 1.00f));
-        PushCol(ImGuiCol_CheckMark,            ImVec4(0.22f, 0.78f, 0.95f, 1.00f));
-        PushCol(ImGuiCol_SliderGrab,           ImVec4(0.18f, 0.66f, 0.86f, 1.00f));
-        PushCol(ImGuiCol_SliderGrabActive,     ImVec4(0.26f, 0.80f, 0.98f, 1.00f));
-        PushCol(ImGuiCol_Button,               ImVec4(0.14f, 0.24f, 0.36f, 1.00f));
-        PushCol(ImGuiCol_ButtonHovered,        ImVec4(0.19f, 0.34f, 0.50f, 1.00f));
-        PushCol(ImGuiCol_ButtonActive,         ImVec4(0.12f, 0.45f, 0.66f, 1.00f));
-        PushCol(ImGuiCol_Header,               ImVec4(0.14f, 0.25f, 0.37f, 0.85f));
-        PushCol(ImGuiCol_HeaderHovered,        ImVec4(0.19f, 0.34f, 0.50f, 0.95f));
-        PushCol(ImGuiCol_HeaderActive,         ImVec4(0.22f, 0.42f, 0.62f, 1.00f));
-        PushCol(ImGuiCol_Tab,                  ImVec4(0.10f, 0.15f, 0.22f, 1.00f));
-        PushCol(ImGuiCol_TabHovered,           ImVec4(0.18f, 0.34f, 0.50f, 1.00f));
-        PushCol(ImGuiCol_TabSelected,          ImVec4(0.14f, 0.40f, 0.60f, 1.00f));
-        PushCol(ImGuiCol_TableHeaderBg,        ImVec4(0.11f, 0.16f, 0.23f, 1.00f));
-        PushCol(ImGuiCol_TableRowBg,           ImVec4(0.00f, 0.00f, 0.00f, 0.00f));
-        PushCol(ImGuiCol_TableRowBgAlt,        ImVec4(1.00f, 1.00f, 1.00f, 0.03f));
-    }
-
-    ~ScopedInspectorTheme() {
-        ImGui::PopStyleColor(color_count_);
-        ImGui::PopStyleVar(var_count_);
-    }
-
-    ScopedInspectorTheme(const ScopedInspectorTheme&) = delete;
-    ScopedInspectorTheme& operator=(const ScopedInspectorTheme&) = delete;
-
-private:
-    void PushCol(ImGuiCol idx, const ImVec4& col) {
-        ImGui::PushStyleColor(idx, col);
-        ++color_count_;
-    }
-    void PushVar(ImGuiStyleVar idx, float val) {
-        ImGui::PushStyleVar(idx, val);
-        ++var_count_;
-    }
-    void PushVar(ImGuiStyleVar idx, const ImVec2& val) {
-        ImGui::PushStyleVar(idx, val);
-        ++var_count_;
-    }
-
-    int color_count_ = 0;
-    int var_count_   = 0;
+struct NavItemMeta {
+    const char* short_title;
+    const char* full_title;
 };
 
-void DrawStatusBadge(const char* label, bool ok) {
-    const ImVec4 col = ok ? ImVec4(0.20f, 0.86f, 0.50f, 1.0f)
-                          : ImVec4(0.95f, 0.40f, 0.36f, 1.0f);
-    ImGui::TextColored(col, "[%s]", label);
+static constexpr NavItemMeta kNavSections[8] = {
+    {"Обзор",     "Обзор и Живые Графики"},
+    {"Игрок",     "LocalPlayer, CPed и Матрица"},
+    {"Игроки",    "PlayerPool (1504 слота)"},
+    {"Транспорт", "VehiclePool (2000 слотов)"},
+    {"Сеть",      "RakNet, BitStream и Byte-Diff"},
+    {"Память",    "Hex, ARM64 Disasm, Watch и Сканер"},
+    {"Опции",     "Темы, Адаптация и Экспорт"},
+    {"MOD",       "Мод-функции: лечилка, турбо, телепорт, посадка"}
+};
+
+bool ReadEntityBasisVectors(uintptr_t matrix_ptr, float out_right[3], float out_fwd[3]) noexcept {
+    if (!mem::SafeMemory::IsPlausibleAddress(matrix_ptr)) {
+        return false;
+    }
+    float raw[8]{}; // Right (0..2), pad (3), Forward (4..6), pad (7)
+    if (!mem::SafeMemory::ReadBytes(matrix_ptr, raw, sizeof(raw))) {
+        return false;
+    }
+    std::memcpy(out_right, raw + 0, 12);
+    std::memcpy(out_fwd,   raw + 4, 12);
+    return true;
 }
 
-void DrawKeyValueAddrRow(const char* name,
-                         uintptr_t addr,
-                         uintptr_t module_base,
-                         const char* note) {
-    ImGui::TableNextRow();
-    ImGui::TableSetColumnIndex(0);
-    ImGui::TextUnformatted(name);
-
-    ImGui::TableSetColumnIndex(1);
-    if (addr != 0) {
-        ImGui::Text("0x%012" PRIXPTR, addr);
-    } else {
-        ImGui::TextDisabled("NULL (0x0)");
-    }
-
-    ImGui::TableSetColumnIndex(2);
-    if (module_base != 0 && addr >= module_base && addr < module_base + 0x05000000ULL) {
-        ImGui::TextColored(ImVec4(0.45f, 0.82f, 0.98f, 1.0f), "+0x%07" PRIXPTR, addr - module_base);
-    } else {
-        ImGui::TextDisabled("heap / ext");
-    }
-
-    ImGui::TableSetColumnIndex(3);
-    ImGui::TextUnformatted(note ? note : "");
+uintptr_t ParseHexVaString(const char* s) noexcept {
+    if (!s || !*s) return 0;
+    return static_cast<uintptr_t>(std::strtoull(s, nullptr, 16));
 }
 
 } // namespace
 
 InspectorMenu::InspectorMenu() {
     std::snprintf(mem_addr_input_, sizeof(mem_addr_input_), "0x0");
+    std::snprintf(scan_start_buf_, sizeof(scan_start_buf_), "0x0");
+    std::snprintf(scan_query_buf_, sizeof(scan_query_buf_), "7F 45 4C 46");
+    pinned_players_.fill(false);
 }
 
 void InspectorMenu::SetExternalSnapshotForTest(const inspector::WorldDiagnosticSnapshot& snap) {
@@ -163,39 +64,162 @@ void InspectorMenu::SetExternalSnapshotForTest(const inspector::WorldDiagnosticS
     use_external_snapshot_ = true;
 }
 
-void InspectorMenu::JumpToMemoryAddress(uintptr_t addr, const char* label) {
-    mem_inspect_addr_    = addr;
-    mem_selected_offset_ = 0;
-    std::snprintf(mem_addr_input_, sizeof(mem_addr_input_), "0x%" PRIXPTR, addr);
-    if (label && label != mem_inspect_label_) {
-        std::snprintf(mem_inspect_label_, sizeof(mem_inspect_label_), "%s", label);
-    }
-    switch_to_mem_tab_ = true;
-}
-
-void InspectorMenu::RefreshSnapshotIfNeeded(uintptr_t module_base) {
-    if (use_external_snapshot_) {
+void InspectorMenu::ApplyTouchKineticScrolling() {
+    if (!config_.kinetic_touch_scroll) {
         return;
     }
-    const uint64_t now = MonotonicNowMs();
-    const uint64_t interval = static_cast<uint64_t>(std::max(16, config_.snapshot_refresh_ms));
-    if (last_snapshot_ms_ == 0 || (now - last_snapshot_ms_) >= interval) {
-        inspector::GameReader::CaptureSnapshot(module_base, snapshot_, config_.allow_rakclient_vcall);
-        last_snapshot_ms_ = now;
+    ImGuiWindow* win = ImGui::GetCurrentWindow();
+    if (!win || win->ScrollMax.y <= 0.0f) {
+        return;
+    }
+
+    ImGuiIO& io = ImGui::GetIO();
+    const bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+    const bool any_widget_dragging = ImGui::IsAnyItemActive() &&
+        (ImGui::GetActiveID() != win->MoveId);
+
+    if (hovered && io.MouseDown[0] && !any_widget_dragging && std::fabs(io.MouseDelta.y) > 0.25f) {
+        win->Scroll.y = std::clamp(win->Scroll.y - io.MouseDelta.y, 0.0f, win->ScrollMax.y);
+        touch_scroll_vel_y_ = -io.MouseDelta.y;
+        touch_scroll_win_   = win;
+    } else if (!io.MouseDown[0] && touch_scroll_win_ == win && std::fabs(touch_scroll_vel_y_) > 0.35f) {
+        win->Scroll.y = std::clamp(win->Scroll.y + touch_scroll_vel_y_, 0.0f, win->ScrollMax.y);
+        touch_scroll_vel_y_ *= 0.90f;
+        if (win->Scroll.y <= 0.0f || win->Scroll.y >= win->ScrollMax.y) {
+            touch_scroll_vel_y_ = 0.0f;
+        }
+    }
+}
+
+void InspectorMenu::ApplyPendingWindowPreset(float ui_scale) {
+    if (!pending_preset_apply_) {
+        return;
+    }
+    pending_preset_apply_ = false;
+
+    ImGuiIO& io = ImGui::GetIO();
+    const float sx = std::clamp(config_.safe_area_pad_x, 0.0f, 160.0f);
+    const float sy = std::clamp(config_.safe_area_pad_y, 0.0f, 120.0f);
+    const float avail_w = std::max(480.0f, io.DisplaySize.x - sx * 2.0f);
+    const float avail_h = std::max(320.0f, io.DisplaySize.y - sy * 2.0f - 48.0f * ui_scale);
+    const float top_y   = sy + 46.0f * ui_scale;
+
+    ImVec2 pos(sx, top_y);
+    ImVec2 sz(avail_w * 0.84f, avail_h * 0.86f);
+
+    switch (pending_preset_) {
+        case WindowPresetId::CompactFloat:
+            sz  = ImVec2(avail_w * 0.64f, avail_h * 0.72f);
+            pos = ImVec2(sx + (avail_w - sz.x) * 0.5f, top_y + (avail_h - sz.y) * 0.4f);
+            break;
+        case WindowPresetId::MaximizedSafe:
+            sz  = ImVec2(avail_w, avail_h);
+            pos = ImVec2(sx, top_y);
+            break;
+        case WindowPresetId::SplitLeft:
+            sz  = ImVec2(avail_w * 0.49f, avail_h);
+            pos = ImVec2(sx, top_y);
+            break;
+        case WindowPresetId::SplitRight:
+            sz  = ImVec2(avail_w * 0.49f, avail_h);
+            pos = ImVec2(sx + avail_w - sz.x, top_y);
+            break;
+        case WindowPresetId::StandardCenter:
+        default:
+            sz  = ImVec2(avail_w * 0.84f, avail_h * 0.86f);
+            pos = ImVec2(sx + (avail_w - sz.x) * 0.5f, top_y + (avail_h - sz.y) * 0.35f);
+            break;
+    }
+
+    ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(sz, ImGuiCond_Always);
+}
+
+void InspectorMenu::RefreshSnapshotAndMetrics(uintptr_t module_base) {
+    const uint64_t now = detail::MonotonicNowMs();
+
+    if (!use_external_snapshot_ && !config_.pause_snapshots) {
+        const uint64_t interval = static_cast<uint64_t>(std::max(25, config_.snapshot_refresh_ms));
+        if (last_snapshot_ms_ == 0 || (now - last_snapshot_ms_) >= interval) {
+            inspector::GameReader::CaptureSnapshot(module_base, snapshot_, config_.allow_rakclient_vcall);
+            last_snapshot_ms_ = now;
+
+            // Кинематика локального игрока и подсветка изменений кэша пакета 33
+            const auto& lp = snapshot_.local_player;
+            if (lp.valid && lp.ped_valid) {
+                if (has_prev_local_pos_ && now > prev_local_pos_ms_) {
+                    const float dt = static_cast<float>(now - prev_local_pos_ms_) * 0.001f;
+                    const float dx = lp.pos[0] - prev_local_pos_[0];
+                    const float dy = lp.pos[1] - prev_local_pos_[1];
+                    const float dz = lp.pos[2] - prev_local_pos_[2];
+                    const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+                    if (dist < 250.0f && dt > 0.01f) {
+                        computed_speed_ms_  = dist / dt;
+                        computed_speed_kmh_ = computed_speed_ms_ * 3.6f;
+                        session_odometer_m_ += static_cast<double>(dist);
+                    }
+                }
+                std::memcpy(prev_local_pos_, lp.pos, sizeof(prev_local_pos_));
+                prev_local_pos_ms_  = now;
+                has_prev_local_pos_ = true;
+
+                for (size_t i = 0; i < 7; ++i) {
+                    uint32_t dw = 0;
+                    std::memcpy(&dw, lp.cache_block_f0.data() + i * 4, 4);
+                    if (dw != prev_sync_cache_33_[i]) {
+                        prev_sync_cache_33_[i]    = dw;
+                        sync_cache_changed_ms_[i] = now;
+                    }
+                }
+            }
+        }
+    }
+
+    // Расчёт интенсивности сетевых пакетов раз в 500 мс
+    if (prev_net_rate_ms_ == 0 || (now - prev_net_rate_ms_) >= 500ULL) {
+        std::vector<net::CapturedNetEvent> tmp_ev;
+        std::vector<net::CounterSnapshotEntry> tmp_pc, tmp_rc;
+        uint64_t total_pkts = 0, total_rpcs = 0;
+        net::NetworkCatalogAndObserver::GetCapturedSnapshot(tmp_ev, tmp_pc, tmp_rc, total_pkts, total_rpcs);
+        if (prev_net_rate_ms_ != 0 && now > prev_net_rate_ms_) {
+            const float dt = static_cast<float>(now - prev_net_rate_ms_) * 0.001f;
+            rate_pkts_per_sec_ = static_cast<float>(total_pkts - prev_net_total_pkts_) / dt;
+            rate_rpcs_per_sec_ = static_cast<float>(total_rpcs - prev_net_total_rpcs_) / dt;
+        }
+        prev_net_total_pkts_ = total_pkts;
+        prev_net_total_rpcs_ = total_rpcs;
+        prev_net_rate_ms_    = now;
+    }
+
+    // Запись в кольцевые буферы живых спарклайнов каждые 80 мс
+    if (last_hist_sample_ms_ == 0 || (now - last_hist_sample_ms_) >= 80ULL) {
+        ImGuiIO& io = ImGui::GetIO();
+        hist_fps_[hist_cursor_]             = io.Framerate;
+        hist_frametime_ms_[hist_cursor_]    = io.DeltaTime * 1000.0f;
+        hist_ping_ms_[hist_cursor_]         = static_cast<float>(std::max(0, snapshot_.rakclient.last_ping));
+        hist_pkt_per_sec_[hist_cursor_]     = rate_pkts_per_sec_ + rate_rpcs_per_sec_;
+        hist_local_speed_kmh_[hist_cursor_] = computed_speed_kmh_;
+        hist_cursor_ = (hist_cursor_ + 1) % kHistorySamples;
+        last_hist_sample_ms_ = now;
     }
 }
 
 void InspectorMenu::Render(const InternalImGuiRuntimeTable& rt_table) {
     ImGuiIO& io = ImGui::GetIO();
-    const float disp_h = (io.DisplaySize.y > 100.0f) ? io.DisplaySize.y : 1080.0f;
-    const float ui_scale = std::clamp(disp_h / 1080.0f, 0.85f, 2.0f);
+    const float disp_h   = (io.DisplaySize.y > 120.0f) ? io.DisplaySize.y : 1080.0f;
+    const float auto_dpi = std::clamp(disp_h / 1080.0f, 0.82f, 1.85f);
+    const float ui_scale = std::clamp(auto_dpi * config_.user_ui_scale, 0.72f, 2.35f);
 
-    RefreshSnapshotIfNeeded(rt_table.module_base);
+    if (forced_tab_index_ >= 0 && forced_tab_index_ <= 7) {
+        active_section_ = forced_tab_index_;
+    }
 
-    // Турбо-тик мода (каждый кадр, GL-поток)
+    // MOD: per-frame тик (турбо) на GL-потоке
     br::mod::Tick();
 
-    ScopedInspectorTheme theme(ui_scale);
+    RefreshSnapshotAndMetrics(rt_table.module_base);
+
+    detail::ScopedAdaptiveTheme theme_guard(config_.theme, ui_scale, config_.window_bg_alpha);
 
     if (config_.show_floating_pill) {
         RenderFloatingPill(ui_scale);
@@ -209,8 +233,13 @@ void InspectorMenu::Render(const InternalImGuiRuntimeTable& rt_table) {
 }
 
 void InspectorMenu::RenderFloatingPill(float ui_scale) {
-    ImGui::SetNextWindowPos(ImVec2(24.0f * ui_scale, 24.0f * ui_scale), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowBgAlpha(0.90f);
+    ImGuiIO& io = ImGui::GetIO();
+    const auto pal = detail::GetThemePalette(config_.theme, config_.window_bg_alpha);
+
+    ImGui::SetNextWindowPos(
+        ImVec2(std::max(12.0f, config_.safe_area_pad_x), std::max(8.0f, config_.safe_area_pad_y * 0.5f)),
+        ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowBgAlpha(0.92f);
 
     const ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoTitleBar |
@@ -218,23 +247,35 @@ void InspectorMenu::RenderFloatingPill(float ui_scale) {
         ImGuiWindowFlags_NoSavedSettings |
         ImGuiWindowFlags_NoFocusOnAppearing;
 
-    if (ImGui::Begin("##BRInspectorFloatingPill", nullptr, flags)) {
-        const ImVec4 accent = config_.menu_open
-            ? ImVec4(0.22f, 0.84f, 0.96f, 1.0f)
-            : ImVec4(0.65f, 0.75f, 0.85f, 1.0f);
+    if (ImGui::Begin("##BRFloatingDockPill", nullptr, flags)) {
+        // Удерживаем плавающий бейдж в пределах экрана при поворотах/смене разрешения
+        ImVec2 wpos = ImGui::GetWindowPos();
+        ImVec2 wsz  = ImGui::GetWindowSize();
+        if (io.DisplaySize.x > 120.0f && io.DisplaySize.y > 120.0f) {
+            const float cx = std::clamp(wpos.x, 4.0f, std::max(4.0f, io.DisplaySize.x - wsz.x - 4.0f));
+            const float cy = std::clamp(wpos.y, 4.0f, std::max(4.0f, io.DisplaySize.y - wsz.y - 4.0f));
+            if (std::fabs(cx - wpos.x) > 1.0f || std::fabs(cy - wpos.y) > 1.0f) {
+                ImGui::SetWindowPos(ImVec2(cx, cy));
+            }
+        }
 
-        ImGui::TextColored(accent, "BR 16.111");
+        ImGui::TextColored(pal.accent, "BR 16.111");
         ImGui::SameLine();
-        if (ImGui::Button(config_.menu_open ? "Скрыть UI" : "Инспектор")) {
+        if (ImGui::Button(config_.menu_open ? "Скрыть" : "Меню")) {
             config_.menu_open = !config_.menu_open;
         }
         ImGui::SameLine();
-        if (ImGui::SmallButton(config_.show_mini_hud ? "HUD:ВКЛ" : "HUD")) {
+        if (detail::DrawFilterChip("HUD", config_.show_mini_hud, pal)) {
             config_.show_mini_hud = !config_.show_mini_hud;
         }
         ImGui::SameLine();
-        ImGui::TextDisabled("| %.0f FPS | P:%zu V:%zu",
-                            ImGui::GetIO().Framerate,
+        if (detail::DrawFilterChip(config_.pause_snapshots ? "ПАУЗА" : "LIVE", !config_.pause_snapshots, pal)) {
+            config_.pause_snapshots = !config_.pause_snapshots;
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("%.0f FPS | %d мс | Игр:%zu Авто:%zu",
+                            io.Framerate,
+                            snapshot_.rakclient.last_ping,
                             snapshot_.remote_players.size(),
                             snapshot_.vehicles.size());
     }
@@ -242,130 +283,1056 @@ void InspectorMenu::RenderFloatingPill(float ui_scale) {
 }
 
 void InspectorMenu::RenderMiniHud(float ui_scale) {
-    ImGui::SetNextWindowPos(ImVec2(24.0f * ui_scale, 84.0f * ui_scale), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowBgAlpha(0.82f);
+    ImGuiIO& io = ImGui::GetIO();
+    const auto pal = detail::GetThemePalette(config_.theme, config_.window_bg_alpha);
+
+    const float pad_x = std::max(14.0f, config_.safe_area_pad_x);
+    const float pad_y = std::max(14.0f, config_.safe_area_pad_y);
+    ImGui::SetNextWindowPos(
+        ImVec2(std::max(16.0f, io.DisplaySize.x - 320.0f * ui_scale - pad_x), pad_y),
+        ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowBgAlpha(0.80f);
 
     const ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoTitleBar |
         ImGuiWindowFlags_AlwaysAutoResize |
-        ImGuiWindowFlags_NoSavedSettings;
+        ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoInputs |
+        ImGuiWindowFlags_NoFocusOnAppearing;
 
-    if (ImGui::Begin("##BRInspectorMiniHud", nullptr, flags)) {
-        ImGui::TextColored(ImVec4(0.30f, 0.85f, 0.98f, 1.0f),
-                           "Телеметрия 16.111.19050 (Read-Only)");
+    if (ImGui::Begin("##BRTelemetryMiniHud", nullptr, flags)) {
+        ImGui::TextColored(pal.accent, "BR 16.111.19050 | %.0f FPS (%.1f мс)",
+                           io.Framerate, io.DeltaTime * 1000.0f);
         ImGui::Separator();
 
         const auto& lp = snapshot_.local_player;
         if (lp.valid) {
-            ImGui::Text("LocalPlayer: ID %u (%s)",
+            ImGui::Text("ID %u | %s | %.0f км/ч",
                         lp.player_id,
-                        lp.name.empty() ? "-" : lp.name.c_str());
+                        lp.name.empty() ? "-" : lp.name.c_str(),
+                        computed_speed_kmh_);
             if (lp.ped_valid) {
-                ImGui::Text("XYZ: %.2f, %.2f, %.2f", lp.pos[0], lp.pos[1], lp.pos[2]);
-                ImGui::Text("CPed +4B0/+4B8: %.1f / %.1f | InVeh: %u",
-                            lp.ped_float_4b0, lp.ped_float_4b8, lp.ped_in_vehicle_flag);
+                float r_vec[3]{}, f_vec[3]{0.0f, 1.0f, 0.0f};
+                ReadEntityBasisVectors(lp.matrix_ptr, r_vec, f_vec);
+                const float yaw = std::atan2(f_vec[1], f_vec[0]) * (180.0f / 3.14159265f);
+                ImGui::Text("XYZ: %.1f, %.1f, %.1f (%s %.0f°)",
+                            lp.pos[0], lp.pos[1], lp.pos[2],
+                            detail::CompassDirectionRu(yaw), yaw);
             }
             if (lp.local_vehicle_ptr != 0) {
-                ImGui::Text("Авто ID: %u (подтип %u)", lp.local_vehicle_id, lp.local_vehicle_subtype);
+                ImGui::TextColored(pal.success, "Авто: VehID %u (подтип %u)",
+                                   lp.local_vehicle_id, lp.local_vehicle_subtype);
             }
         } else {
-            ImGui::TextDisabled("LocalPlayer не инициализирован");
+            ImGui::TextDisabled("Ожидание входа на сервер...");
         }
 
-        ImGui::Text("Пулы: Игроки %zu/1504 | Авто %zu/2000 | Объекты %zu/4096",
+        ImGui::Text("Пулы: P %zu/1504 | V %zu/2000 | O %zu/4096",
                     snapshot_.remote_players.size(),
                     snapshot_.vehicles.size(),
                     snapshot_.active_object_slots);
-
-        if (snapshot_.rakclient.queried_live_methods && snapshot_.rakclient.is_connected) {
-            ImGui::Text("RakClient: Ping %d мс (avg %d) | MTU %d",
-                        snapshot_.rakclient.last_ping,
-                        snapshot_.rakclient.average_ping,
-                        snapshot_.rakclient.mtu_size);
-        }
+        ImGui::TextDisabled("Сеть: Ping %d мс | %.1f пкт/с",
+                            snapshot_.rakclient.last_ping,
+                            rate_pkts_per_sec_ + rate_rpcs_per_sec_);
     }
     ImGui::End();
 }
 
+void InspectorMenu::RenderNavigationSidebar(float ui_scale, float sidebar_w) {
+    const auto pal = detail::GetThemePalette(config_.theme, config_.window_bg_alpha);
+
+    if (ImGui::BeginChild("##AdaptiveSidebarRail", ImVec2(sidebar_w, 0.0f), ImGuiChildFlags_Border)) {
+        ApplyTouchKineticScrolling();
+
+        const float item_h = 44.0f * ui_scale;
+        const float avail_w = ImGui::GetContentRegionAvail().x;
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+
+        for (int i = 0; i < 8; ++i) {
+            ImGui::PushID(i);
+            const bool selected = (active_section_ == i);
+            const ImVec2 p0 = ImGui::GetCursorScreenPos();
+            const ImVec2 p1(p0.x + avail_w, p0.y + item_h);
+
+            if (ImGui::InvisibleButton("##NavBtn", ImVec2(avail_w, item_h))) {
+                active_section_   = i;
+                forced_tab_index_ = -1;
+            }
+            const bool hovered = ImGui::IsItemHovered();
+
+            if (selected || hovered) {
+                const ImU32 bg = selected
+                    ? ImGui::ColorConvertFloat4ToU32(ImVec4(pal.accent.x * 0.28f, pal.accent.y * 0.28f, pal.accent.z * 0.28f, 0.85f))
+                    : ImGui::ColorConvertFloat4ToU32(ImVec4(pal.accent.x * 0.14f, pal.accent.y * 0.14f, pal.accent.z * 0.14f, 0.55f));
+                dl->AddRectFilled(p0, p1, bg, 8.0f * ui_scale);
+            }
+            if (selected) {
+                // Левая вертикальная светящаяся полоса активного раздела
+                dl->AddRectFilled(ImVec2(p0.x, p0.y + 6.0f * ui_scale),
+                                  ImVec2(p0.x + 3.6f * ui_scale, p1.y - 6.0f * ui_scale),
+                                  pal.accent_u32, 2.0f * ui_scale);
+            }
+
+            const ImU32 icon_col = selected ? pal.accent_u32 : ImGui::GetColorU32(ImGuiCol_TextDisabled);
+            const ImU32 txt_col  = selected ? ImGui::GetColorU32(ImGuiCol_Text) : ImGui::GetColorU32(ImGuiCol_TextDisabled);
+
+            detail::DrawSectionVectorIcon(
+                dl,
+                ImVec2(p0.x + 21.0f * ui_scale, (p0.y + p1.y) * 0.5f),
+                8.5f * ui_scale, i, icon_col);
+
+            const float th = ImGui::GetFontSize();
+            dl->AddText(ImVec2(p0.x + 38.0f * ui_scale, (p0.y + p1.y - th) * 0.5f),
+                        txt_col, kNavSections[i].short_title);
+
+            // Живые счётчики справа у пунктов Игроки / Транспорт / Память
+            char badge[24]{};
+            if (i == 2) std::snprintf(badge, sizeof(badge), "%zu", snapshot_.remote_players.size());
+            else if (i == 3) std::snprintf(badge, sizeof(badge), "%zu", snapshot_.vehicles.size());
+            else if (i == 5 && !watch_items_.empty()) std::snprintf(badge, sizeof(badge), "%zu", watch_items_.size());
+
+            if (badge[0] != '\0') {
+                const ImVec2 bsz = ImGui::CalcTextSize(badge);
+                dl->AddText(ImVec2(p1.x - bsz.x - 8.0f * ui_scale, (p0.y + p1.y - bsz.y) * 0.5f),
+                            selected ? pal.accent_u32 : ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                            badge);
+            }
+            ImGui::PopID();
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextDisabled("Опрос пулов:");
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::SliderInt("##RefreshMsSide", &config_.snapshot_refresh_ms, 30, 600, "%d мс");
+    }
+    ImGui::EndChild();
+}
+
+void InspectorMenu::RenderNavigationTopBar(float ui_scale) {
+    const auto pal = detail::GetThemePalette(config_.theme, config_.window_bg_alpha);
+    for (int i = 0; i < 8; ++i) {
+        if (i > 0) ImGui::SameLine(0.0f, 5.0f * ui_scale);
+        if (detail::DrawFilterChip(kNavSections[i].short_title, active_section_ == i, pal)) {
+            active_section_   = i;
+            forced_tab_index_ = -1;
+        }
+    }
+    ImGui::Separator();
+}
+
 void InspectorMenu::RenderMainWindow(const InternalImGuiRuntimeTable& rt_table, float ui_scale) {
     ImGuiIO& io = ImGui::GetIO();
-    const float def_w = std::min(980.0f * ui_scale, std::max(540.0f, io.DisplaySize.x * 0.88f));
-    const float def_h = std::min(640.0f * ui_scale, std::max(380.0f, io.DisplaySize.y * 0.82f));
+    const auto pal = detail::GetThemePalette(config_.theme, config_.window_bg_alpha);
 
+    const float sx = std::clamp(config_.safe_area_pad_x, 0.0f, 160.0f);
+    const float sy = std::clamp(config_.safe_area_pad_y, 0.0f, 120.0f);
+    const float def_w = std::min(1040.0f * ui_scale, std::max(500.0f, (io.DisplaySize.x - sx * 2.0f) * 0.86f));
+    const float def_h = std::min(670.0f * ui_scale,  std::max(360.0f, (io.DisplaySize.y - sy * 2.0f) * 0.84f));
+
+    ImGui::SetNextWindowSizeConstraints(ImVec2(460.0f, 300.0f),
+                                        ImVec2(std::max(600.0f, io.DisplaySize.x), std::max(400.0f, io.DisplaySize.y)));
     ImGui::SetNextWindowSize(ImVec2(def_w, def_h), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowPos(ImVec2(60.0f * ui_scale, 90.0f * ui_scale), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(sx + 24.0f * ui_scale, sy + 52.0f * ui_scale), ImGuiCond_FirstUseEver);
 
-    if (!ImGui::Begin("BLACK RUSSIA 16.111.19050 — Инспектор Памяти, Пулов и Сети (Read-Only)###BRInspectorMain",
+    ApplyPendingWindowPreset(ui_scale);
+
+    if (!ImGui::Begin("BLACK RUSSIA 16.111.19050 — Инспектор и Анализатор (Read-Only)###BRInspectorMain",
                       &config_.menu_open,
                       ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
         ImGui::End();
         return;
     }
 
-    // Верхняя инфо-полоса статуса
-    DrawStatusBadge(rt_table.build_id_verified ? "ELF Build-ID OK" : "Build-ID ОТЛИЧАЕТСЯ",
-                    rt_table.build_id_verified);
+    // Верхняя адаптивная шапка быстрых действий
+    detail::DrawStatusPill(rt_table.build_id_verified ? "16.111.19050 OK" : "ДИАГН. РЕЖИМ",
+                           rt_table.build_id_verified, pal);
     ImGui::SameLine();
-    ImGui::Text("Base: 0x%" PRIXPTR " | Собственный ImGui %s (OwnCtx: 0x%" PRIXPTR ")",
-                rt_table.module_base,
-                IMGUI_VERSION,
-                reinterpret_cast<uintptr_t>(ImGui::GetCurrentContext()));
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(130.0f * ui_scale);
-    ImGui::SliderInt("Опрос (мс)", &config_.snapshot_refresh_ms, 30, 1000);
+    ImGui::TextColored(pal.accent, "%s", kNavSections[std::clamp(active_section_, 0, 7)].full_title);
+
+    const float right_btns_w = 275.0f * ui_scale;
+    if (ImGui::GetWindowWidth() > right_btns_w + 340.0f * ui_scale) {
+        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - right_btns_w);
+        if (ImGui::SmallButton(config_.pause_snapshots ? "Продолжить" : "Пауза")) {
+            config_.pause_snapshots = !config_.pause_snapshots;
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Компакт")) {
+            pending_preset_ = WindowPresetId::CompactFloat;
+            pending_preset_apply_ = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Макс")) {
+            pending_preset_ = WindowPresetId::MaximizedSafe;
+            pending_preset_apply_ = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("JSON")) {
+            ExportWorldSnapshotJson(rt_table);
+        }
+    }
     ImGui::Separator();
 
-    if (ImGui::BeginTabBar("##BRInspectorMainTabs", ImGuiTabBarFlags_FittingPolicyScroll)) {
-        const auto tab_flags_for = [&](int idx, bool force_mem = false) -> ImGuiTabItemFlags {
-            if (forced_tab_index_ == idx) {
-                return ImGuiTabItemFlags_SetSelected;
-            }
-            if (force_mem && switch_to_mem_tab_) {
-                return ImGuiTabItemFlags_SetSelected;
-            }
-            return ImGuiTabItemFlags_None;
-        };
+    const float win_w = ImGui::GetContentRegionAvail().x;
+    const bool use_sidebar = !config_.adaptive_sidebar || (win_w >= 690.0f * ui_scale);
 
-        if (ImGui::BeginTabItem("0. MOD (действия)", nullptr, tab_flags_for(6))) {
-            RenderTabMod();
-            ImGui::EndTabItem();
-        }
-        if (ImGui::BeginTabItem("1. Модуль и ImGui", nullptr, tab_flags_for(0))) {
-            RenderTabModuleAndImGui(rt_table);
-            ImGui::EndTabItem();
-        }
-        if (ImGui::BeginTabItem("2. LocalPlayer и CPed", nullptr, tab_flags_for(1))) {
-            RenderTabLocalPlayer();
-            ImGui::EndTabItem();
-        }
-        if (ImGui::BeginTabItem("3. PlayerPool (1504)", nullptr, tab_flags_for(2))) {
-            RenderTabPlayerPool();
-            ImGui::EndTabItem();
-        }
-        if (ImGui::BeginTabItem("4. VehiclePool (2000)", nullptr, tab_flags_for(3))) {
-            RenderTabVehiclePool();
-            ImGui::EndTabItem();
-        }
-        if (ImGui::BeginTabItem("5. Сеть: Пакеты и RPC", nullptr, tab_flags_for(4))) {
-            RenderTabNetwork(rt_table.module_base);
-            ImGui::EndTabItem();
-        }
-        if (ImGui::BeginTabItem("6. Память и Карта VA", nullptr, tab_flags_for(5, true))) {
-            switch_to_mem_tab_ = false;
-            RenderTabMemoryAndVaMap(rt_table);
-            ImGui::EndTabItem();
-        }
-
-        ImGui::EndTabBar();
+    if (use_sidebar) {
+        const float sidebar_w = std::clamp(win_w * 0.20f, 155.0f * ui_scale, 210.0f * ui_scale);
+        RenderNavigationSidebar(ui_scale, sidebar_w);
+        ImGui::SameLine();
+    } else {
+        RenderNavigationTopBar(ui_scale);
     }
+
+    if (ImGui::BeginChild("##BRMainSectionContent", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None)) {
+        switch (active_section_) {
+            case 0: RenderSectionDashboard(rt_table, ui_scale); break;
+            case 1: RenderSectionLocalPlayer(ui_scale); break;
+            case 2: RenderSectionPlayerPool(ui_scale); break;
+            case 3: RenderSectionVehiclePool(ui_scale); break;
+            case 4: RenderSectionNetwork(rt_table.module_base, ui_scale); break;
+            case 5: RenderSectionMemoryLab(rt_table, ui_scale); break;
+            case 7: RenderSectionMod(ui_scale); break;
+            case 6:
+            default: RenderSectionSettingsAndExport(rt_table, ui_scale); break;
+        }
+    }
+    ImGui::EndChild();
 
     ImGui::End();
 }
 
-void InspectorMenu::RenderTabMod() {
+void InspectorMenu::RenderSectionDashboard(const InternalImGuiRuntimeTable& rt_table, float ui_scale) {
+    ApplyTouchKineticScrolling();
+    const auto pal = detail::GetThemePalette(config_.theme, config_.window_bg_alpha);
+    ImGuiIO& io    = ImGui::GetIO();
+
+    const float avail_w = ImGui::GetContentRegionAvail().x;
+    const float gap     = ImGui::GetStyle().ItemSpacing.x;
+    const int   cols    = (avail_w >= 760.0f * ui_scale) ? 4 : (avail_w >= 420.0f * ui_scale) ? 2 : 1;
+    const float card_w  = (avail_w - gap * static_cast<float>(cols - 1)) / static_cast<float>(cols);
+    const float card_h  = 118.0f * ui_scale;
+
+    char v_fps[32]{}, s_fps[48]{};
+    std::snprintf(v_fps, sizeof(v_fps), "%.0f FPS", io.Framerate);
+    std::snprintf(s_fps, sizeof(s_fps), "%.2f мс | %.0fx%.0f", io.DeltaTime * 1000.0f, io.DisplaySize.x, io.DisplaySize.y);
+
+    char v_net[32]{}, s_net[48]{};
+    std::snprintf(v_net, sizeof(v_net), "%d мс", snapshot_.rakclient.last_ping);
+    std::snprintf(s_net, sizeof(s_net), "%.1f пкт/с | MTU %d",
+                  rate_pkts_per_sec_ + rate_rpcs_per_sec_, snapshot_.rakclient.mtu_size);
+
+    char v_spd[32]{}, s_spd[48]{};
+    std::snprintf(v_spd, sizeof(v_spd), "%.1f км/ч", computed_speed_kmh_);
+    std::snprintf(s_spd, sizeof(s_spd), "%.1f м/с | Путь %.0f м", computed_speed_ms_, session_odometer_m_);
+
+    char v_pls[32]{}, s_pls[48]{};
+    std::snprintf(v_pls, sizeof(v_pls), "%zu игр.", snapshot_.remote_players.size());
+    std::snprintf(s_pls, sizeof(s_pls), "Авто: %zu | Объекты: %zu",
+                  snapshot_.vehicles.size(), snapshot_.active_object_slots);
+
+    detail::DrawMetricSparklineCard("c_fps", "РЕНДЕР GLES 3.0", v_fps, s_fps,
+                                    hist_fps_.data(), kHistorySamples, hist_cursor_,
+                                    0.0f, 120.0f, card_w, card_h, ui_scale, pal);
+    if (cols >= 2) ImGui::SameLine();
+    detail::DrawMetricSparklineCard("c_net", "СЕТЬ RAKNET", v_net, s_net,
+                                    hist_ping_ms_.data(), kHistorySamples, hist_cursor_,
+                                    0.0f, 200.0f, card_w, card_h, ui_scale, pal);
+    if (cols == 4) ImGui::SameLine();
+    detail::DrawMetricSparklineCard("c_spd", "ДИНАМИКА ИГРОКА", v_spd, s_spd,
+                                    hist_local_speed_kmh_.data(), kHistorySamples, hist_cursor_,
+                                    0.0f, 220.0f, card_w, card_h, ui_scale, pal);
+    if (cols >= 2) ImGui::SameLine();
+    detail::DrawMetricSparklineCard("c_pls", "АКТИВНОСТЬ МИРА", v_pls, s_pls,
+                                    hist_pkt_per_sec_.data(), kHistorySamples, hist_cursor_,
+                                    0.0f, 40.0f, card_w, card_h, ui_scale, pal);
+
+    ImGui::Spacing();
+    ImGui::TextColored(pal.accent, "Заполненность игровых пулов (16.111.19050)");
+    char r_pl[32]{}, r_vh[32]{}, r_ob[32]{};
+    std::snprintf(r_pl, sizeof(r_pl), "%zu / 1504", snapshot_.remote_players.size());
+    std::snprintf(r_vh, sizeof(r_vh), "%zu / 2000", snapshot_.vehicles.size());
+    std::snprintf(r_ob, sizeof(r_ob), "%zu / 4096", snapshot_.active_object_slots);
+
+    detail::DrawSmoothProgressBar("PlayerPool (VA +0x036130B0)", r_pl,
+                                  static_cast<float>(snapshot_.remote_players.size()) / 1504.0f,
+                                  9.0f * ui_scale, pal.accent);
+    detail::DrawSmoothProgressBar("VehiclePool (VA +0x036130B8)", r_vh,
+                                  static_cast<float>(snapshot_.vehicles.size()) / 2000.0f,
+                                  9.0f * ui_scale, pal.success);
+    detail::DrawSmoothProgressBar("ObjectPool (VA +0x036130D0)", r_ob,
+                                  static_cast<float>(snapshot_.active_object_slots) / 4096.0f,
+                                  9.0f * ui_scale, pal.warning);
+
+    ImGui::Spacing();
+    ImGui::TextColored(pal.accent, "Быстрые переходы к живым структурам в памяти");
+    const uintptr_t base = rt_table.module_base;
+    if (ImGui::Button("CLocalPlayer -> Hex") && snapshot_.local_player.local_player_ptr != 0) {
+        JumpToMemoryAddress(snapshot_.local_player.local_player_ptr, "CLocalPlayer", false);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("CPed -> Hex") && snapshot_.local_player.ped_ptr != 0) {
+        JumpToMemoryAddress(snapshot_.local_player.ped_ptr, "Local CPed", false);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("RakClient -> Hex") && snapshot_.rakclient.rakclient_ptr != 0) {
+        JumpToMemoryAddress(snapshot_.rakclient.rakclient_ptr, "RakClientInterface", false);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("JNILib::step -> ASM") && base != 0) {
+        JumpToMemoryAddress(base + offsets::jni_bridge::kJni_JNILib_step, "JNILib::step", true);
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextDisabled("Base: 0x%" PRIXPTR " | Own ImGuiContext: 0x%" PRIXPTR " | Рендер: %s",
+                        base,
+                        reinterpret_cast<uintptr_t>(ImGui::GetCurrentContext()),
+                        rt_table.render_hook_name ? rt_table.render_hook_name : "-");
+}
+
+void InspectorMenu::RenderSectionLocalPlayer(float ui_scale) {
+    ApplyTouchKineticScrolling();
+    const auto pal = detail::GetThemePalette(config_.theme, config_.window_bg_alpha);
+    const auto& lp = snapshot_.local_player;
+
+    if (!lp.valid) {
+        ImGui::TextDisabled("CLocalPlayer ещё не создан (зайдите на игровой сервер).");
+        return;
+    }
+
+    const float avail_w = ImGui::GetContentRegionAvail().x;
+    const bool two_col  = (avail_w >= 640.0f * ui_scale);
+    const float col_w   = two_col ? (avail_w - ImGui::GetStyle().ItemSpacing.x) * 0.5f : avail_w;
+
+    if (ImGui::BeginChild("##LP_LeftCard", ImVec2(col_w, two_col ? 0.0f : 310.0f * ui_scale), ImGuiChildFlags_Border)) {
+        ApplyTouchKineticScrolling();
+        ImGui::TextColored(pal.accent, "CLocalPlayer и Кинематика CPed");
+        ImGui::Separator();
+
+        ImGui::Text("PlayerID (+0x00): %u | Ник (+0x02): %s",
+                    lp.player_id, lp.name.empty() ? "-" : lp.name.c_str());
+        ImGui::Text("CLocalPlayer*: 0x%" PRIXPTR " | CPed*: 0x%" PRIXPTR,
+                    lp.local_player_ptr, lp.ped_ptr);
+
+        if (ImGui::SmallButton("Hex LocalPlayer")) JumpToMemoryAddress(lp.local_player_ptr, "CLocalPlayer", false);
+        ImGui::SameLine();
+        if (lp.ped_ptr != 0 && ImGui::SmallButton("Hex CPed")) JumpToMemoryAddress(lp.ped_ptr, "Local CPed", false);
+        ImGui::SameLine();
+        if (lp.ped_ptr != 0 && ImGui::SmallButton("+ Watch Pos")) {
+            AddWatchAddress(lp.ped_ptr + offsets::player::kPedPosXOffset, WatchValueType::Vec3f, "LocalPlayer XYZ");
+        }
+
+        if (lp.ped_valid) {
+            float m_right[3]{1.0f, 0.0f, 0.0f}, m_fwd[3]{0.0f, 1.0f, 0.0f};
+            const bool mat_ok = ReadEntityBasisVectors(lp.matrix_ptr, m_right, m_fwd);
+            const float yaw = std::atan2(m_fwd[1], m_fwd[0]) * (180.0f / 3.14159265f);
+            ImGui::Spacing();
+            ImGui::Text("Позиция XYZ: (%.3f, %.3f, %.3f)", lp.pos[0], lp.pos[1], lp.pos[2]);
+            ImGui::Text("Курс: %.1f° (%s) | Скорость: %.2f м/с (%.1f км/ч)",
+                        yaw, detail::CompassDirectionRu(yaw), computed_speed_ms_, computed_speed_kmh_);
+            ImGui::Text("Одометр сессии: %.1f м", session_odometer_m_);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Сброс пути")) session_odometer_m_ = 0.0;
+
+            char s_a[32]{}, s_b[32]{};
+            std::snprintf(s_a, sizeof(s_a), "%.1f (u16: %u)", lp.ped_float_4b0, static_cast<uint16_t>(std::max(0.0f, lp.ped_float_4b0)));
+            std::snprintf(s_b, sizeof(s_b), "%.1f (u16: %u)", lp.ped_float_4b8, static_cast<uint16_t>(std::max(0.0f, lp.ped_float_4b8)));
+            detail::DrawSmoothProgressBar("Поле CPed +0x4B0", s_a, lp.ped_float_4b0 / 100.0f, 8.5f * ui_scale, pal.success);
+            detail::DrawSmoothProgressBar("Поле CPed +0x4B8", s_b, lp.ped_float_4b8 / 100.0f, 8.5f * ui_scale, pal.accent);
+
+            ImGui::Spacing();
+            ImGui::TextDisabled("Векторы CMatrix (+0x48 -> 0x%" PRIXPTR "):", lp.matrix_ptr);
+            if (mat_ok) {
+                ImGui::BulletText("Right:   (%.3f, %.3f, %.3f)", m_right[0], m_right[1], m_right[2]);
+                ImGui::BulletText("Forward: (%.3f, %.3f, %.3f)", m_fwd[0], m_fwd[1], m_fwd[2]);
+            }
+        }
+    }
+    ImGui::EndChild();
+
+    if (two_col) ImGui::SameLine();
+
+    if (ImGui::BeginChild("##LP_RightCard", ImVec2(0.0f, two_col ? 0.0f : 310.0f * ui_scale), ImGuiChildFlags_Border)) {
+        ApplyTouchKineticScrolling();
+        ImGui::TextColored(pal.accent, "Сетевой кэш (Пакеты 30/33) и Текущий Транспорт");
+        ImGui::Separator();
+
+        float sync_200_f = 0.0f;
+        std::memcpy(&sync_200_f, &lp.sync_field_200, 4);
+        ImGui::Text("Поля пакета 30 (+0x1F4 / +0x1F8 / +0x200): 0x%X / 0x%X / %.2f",
+                    lp.sync_field_1f4, lp.sync_field_1f8, sync_200_f);
+
+        const uint64_t now_ms = detail::MonotonicNowMs();
+        ImGui::TextDisabled("Кэш пакета 33 (+0xF0..+0x10B, живая подсветка изменений):");
+        for (size_t i = 0; i < 7; ++i) {
+            uint32_t dw = 0;
+            std::memcpy(&dw, lp.cache_block_f0.data() + i * 4, 4);
+            const bool changed = (sync_cache_changed_ms_[i] != 0 && (now_ms - sync_cache_changed_ms_[i]) < 1200ULL);
+            if (changed) {
+                ImGui::TextColored(pal.warning, "  [+0x%02zX] = 0x%08X [ИЗМ]", 0xF0 + i * 4, dw);
+            } else {
+                ImGui::Text("  [+0x%02zX] = 0x%08X", 0xF0 + i * 4, dw);
+            }
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        if (lp.local_vehicle_ptr != 0) {
+            const float f790 = mem::SafeMemory::ReadOr<float>(
+                lp.local_vehicle_ptr + offsets::vehicle::kVehSpecialFloat790Offset, 0.0f);
+            ImGui::TextColored(pal.success, "Текущий CVehicle*: 0x%" PRIXPTR, lp.local_vehicle_ptr);
+            ImGui::Text("VehID (+0x434): %u | Подтип (+0x430): %u",
+                        lp.local_vehicle_id, lp.local_vehicle_subtype);
+            ImGui::Text("Поле +0x790: %.2f | CPed.inVeh (+0x548): %u",
+                        f790, lp.ped_in_vehicle_flag);
+            if (ImGui::SmallButton("Открыть CVehicle в Hex")) {
+                JumpToMemoryAddress(lp.local_vehicle_ptr, "Local CVehicle", false);
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("+ Watch +0x790")) {
+                AddWatchAddress(lp.local_vehicle_ptr + offsets::vehicle::kVehSpecialFloat790Offset,
+                                WatchValueType::Float32, "LocalVeh +0x790");
+            }
+        } else {
+            ImGui::TextDisabled("Персонаж сейчас пешком (CVehicle* == NULL).");
+        }
+    }
+    ImGui::EndChild();
+}
+
+void InspectorMenu::RenderSectionPlayerPool(float ui_scale) {
+    const auto pal = detail::GetThemePalette(config_.theme, config_.window_bg_alpha);
+
+    ImGui::SetNextItemWidth(200.0f * ui_scale);
+    ImGui::InputText("Поиск ника/ID", player_search_buf_, sizeof(player_search_buf_));
+    ImGui::SameLine();
+    if (detail::DrawFilterChip("★ Избранные", filter_players_pinned_, pal)) filter_players_pinned_ = !filter_players_pinned_;
+    ImGui::SameLine();
+    if (detail::DrawFilterChip("С CPed*", filter_players_ped_, pal)) filter_players_ped_ = !filter_players_ped_;
+    ImGui::SameLine();
+    if (detail::DrawFilterChip("В авто", filter_players_veh_, pal)) filter_players_veh_ = !filter_players_veh_;
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(135.0f * ui_scale);
+    ImGui::SliderFloat("Дист.", &player_max_dist_m_, 20.0f, 3000.0f, "< %.0f м");
+
+    std::vector<const inspector::RemotePlayerEntry*> rows;
+    rows.reserve(snapshot_.remote_players.size());
+    for (const auto& rp : snapshot_.remote_players) {
+        const bool is_pin = (rp.slot_id < 1504) && pinned_players_[rp.slot_id];
+        if (filter_players_pinned_ && !is_pin) continue;
+        if (filter_players_ped_ && !rp.ped_valid) continue;
+        if (filter_players_veh_ && rp.ped_in_vehicle == 0) continue;
+        if (rp.ped_valid && player_max_dist_m_ < 2995.0f && rp.distance_to_local > player_max_dist_m_) continue;
+
+        if (player_search_buf_[0] != '\0') {
+            char id_s[16]{};
+            std::snprintf(id_s, sizeof(id_s), "%u", rp.slot_id);
+            if (!detail::ContainsCaseInsensitive(rp.name, player_search_buf_) &&
+                !detail::ContainsCaseInsensitive(id_s, player_search_buf_)) {
+                continue;
+            }
+        }
+        rows.push_back(&rp);
+    }
+
+    const float avail_w  = ImGui::GetContentRegionAvail().x;
+    const bool has_sel   = (selected_remote_slot_ >= 0);
+    const bool side_card = has_sel && (avail_w >= 700.0f * ui_scale);
+    const float tbl_w    = side_card ? (avail_w * 0.62f) : 0.0f;
+    const float tbl_h    = (has_sel && !side_card) ? (ImGui::GetContentRegionAvail().y * 0.56f) : 0.0f;
+
+    if (ImGui::BeginTable("##PlayersAdaptiveTbl", 7,
+                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                          ImGuiTableFlags_ScrollY | ImGuiTableFlags_Sortable |
+                          ImGuiTableFlags_SizingStretchProp,
+                          ImVec2(tbl_w, tbl_h))) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("★",      ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 28.0f * ui_scale);
+        ImGui::TableSetupColumn("ID",     ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_DefaultSort, 50.0f * ui_scale);
+        ImGui::TableSetupColumn("Никнейм",ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Дист.",  ImGuiTableColumnFlags_WidthFixed, 72.0f * ui_scale);
+        ImGui::TableSetupColumn("+4B0",   ImGuiTableColumnFlags_WidthFixed, 56.0f * ui_scale);
+        ImGui::TableSetupColumn("Статус", ImGuiTableColumnFlags_WidthFixed, 68.0f * ui_scale);
+        ImGui::TableSetupColumn("Hex",    ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 48.0f * ui_scale);
+        ImGui::TableHeadersRow();
+
+        if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
+            const int col = (specs->SpecsCount > 0) ? specs->Specs[0].ColumnIndex : 1;
+            const bool asc = (specs->SpecsCount == 0) || (specs->Specs[0].SortDirection == ImGuiSortDirection_Ascending);
+            std::sort(rows.begin(), rows.end(), [&](const auto* a, const auto* b) {
+                const bool pa = (a->slot_id < 1504) && pinned_players_[a->slot_id];
+                const bool pb = (b->slot_id < 1504) && pinned_players_[b->slot_id];
+                if (pa != pb) return pa > pb; // Избранные ★ всегда закреплены наверху!
+                int cmp = 0;
+                if (col == 2) cmp = a->name.compare(b->name);
+                else if (col == 3) cmp = (a->distance_to_local < b->distance_to_local) ? -1 : (a->distance_to_local > b->distance_to_local ? 1 : 0);
+                else if (col == 4) cmp = (a->ped_float_4b0 < b->ped_float_4b0) ? -1 : 1;
+                else cmp = static_cast<int>(a->slot_id) - static_cast<int>(b->slot_id);
+                return asc ? (cmp < 0) : (cmp > 0);
+            });
+        }
+
+        ApplyTouchKineticScrolling();
+        ImGuiListClipper clipper;
+        clipper.Begin(static_cast<int>(rows.size()));
+        while (clipper.Step()) {
+            for (int r = clipper.DisplayStart; r < clipper.DisplayEnd; ++r) {
+                const auto* rp = rows[static_cast<size_t>(r)];
+                const bool pinned = (rp->slot_id < 1504) && pinned_players_[rp->slot_id];
+                const bool is_sel = (selected_remote_slot_ == static_cast<int>(rp->slot_id));
+
+                ImGui::TableNextRow();
+                ImGui::PushID(static_cast<int>(rp->slot_id));
+
+                ImGui::TableSetColumnIndex(0);
+                if (ImGui::SmallButton(pinned ? "★" : "☆") && rp->slot_id < 1504) {
+                    pinned_players_[rp->slot_id] = !pinned_players_[rp->slot_id];
+                }
+
+                ImGui::TableSetColumnIndex(1);
+                char id_lbl[16]{};
+                std::snprintf(id_lbl, sizeof(id_lbl), "%u", rp->slot_id);
+                if (ImGui::Selectable(id_lbl, is_sel, ImGuiSelectableFlags_None)) {
+                    selected_remote_slot_ = is_sel ? -1 : static_cast<int>(rp->slot_id);
+                }
+
+                ImGui::TableSetColumnIndex(2);
+                if (pinned) ImGui::TextColored(pal.warning, "%s", rp->name.c_str());
+                else        ImGui::TextUnformatted(rp->name.c_str());
+
+                ImGui::TableSetColumnIndex(3);
+                if (rp->ped_valid) ImGui::Text("%.1f м", rp->distance_to_local);
+                else               ImGui::TextDisabled("стрим-аут");
+
+                ImGui::TableSetColumnIndex(4);
+                if (rp->ped_valid) ImGui::Text("%.0f", rp->ped_float_4b0);
+                else               ImGui::TextDisabled("-");
+
+                ImGui::TableSetColumnIndex(5);
+                if (!rp->ped_valid)           ImGui::TextDisabled("Нет Ped");
+                else if (rp->ped_in_vehicle)  ImGui::TextColored(pal.success, "В авто");
+                else                          ImGui::TextUnformatted("Пешком");
+
+                ImGui::TableSetColumnIndex(6);
+                if (ImGui::SmallButton("Hex")) {
+                    JumpToMemoryAddress(rp->remote_ptr, rp->name.c_str(), false);
+                }
+                ImGui::PopID();
+            }
+        }
+        ImGui::EndTable();
+    }
+
+    if (has_sel) {
+        if (side_card) ImGui::SameLine();
+        const inspector::RemotePlayerEntry* sel = nullptr;
+        for (const auto& rp : snapshot_.remote_players) {
+            if (static_cast<int>(rp.slot_id) == selected_remote_slot_) {
+                sel = &rp;
+                break;
+            }
+        }
+        if (ImGui::BeginChild("##RemoteDetailCard", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Border)) {
+            ApplyTouchKineticScrolling();
+            if (!sel) {
+                ImGui::TextDisabled("Слот #%d освободился.", selected_remote_slot_);
+                if (ImGui::SmallButton("Закрыть")) selected_remote_slot_ = -1;
+            } else {
+                ImGui::TextColored(pal.accent, "Игрок [%u] %s", sel->slot_id, sel->name.c_str());
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Закрыть")) selected_remote_slot_ = -1;
+                ImGui::Separator();
+
+                ImGui::Text("CRemotePlayer*: 0x%" PRIXPTR " (ID +0x4A: %u)", sel->remote_ptr, sel->reported_id);
+                ImGui::Text("CPed* (+0x10):  0x%" PRIXPTR, sel->ped_ptr);
+                ImGui::Text("Pool Aux (+0x2F30 / +0x46B0): %d / %d", sel->pool_aux_a, sel->pool_aux_b);
+                ImGui::Text("Поля +0x120 / +0x150 / +0x15B / +0x15C: 0x%X / 0x%" PRIX64 " / %u / %u",
+                            sel->state_120, sel->field_150, sel->byte_15b, sel->u16_15c);
+
+                if (sel->ped_valid) {
+                    const auto& lp = snapshot_.local_player;
+                    ImGui::Spacing();
+                    ImGui::Text("XYZ: (%.2f, %.2f, %.2f) | Дист: %.1f м",
+                                sel->pos[0], sel->pos[1], sel->pos[2], sel->distance_to_local);
+                    if (lp.valid && lp.ped_valid) {
+                        ImGui::TextDisabled("ΔXYZ от вас: (%+.1f, %+.1f, %+.1f)",
+                                            sel->pos[0] - lp.pos[0],
+                                            sel->pos[1] - lp.pos[1],
+                                            sel->pos[2] - lp.pos[2]);
+                    }
+                    ImGui::Text("CPed +0x4B0 / +0x4B8: %.1f / %.1f | CVehicle*: 0x%" PRIXPTR,
+                                sel->ped_float_4b0, sel->ped_float_4b8, sel->ped_vehicle_ptr);
+                }
+
+                if (ImGui::SmallButton("CRemotePlayer -> Hex")) JumpToMemoryAddress(sel->remote_ptr, sel->name.c_str(), false);
+                if (sel->ped_ptr != 0) {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("CPed -> Hex")) JumpToMemoryAddress(sel->ped_ptr, "Remote CPed", false);
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("+ Watch XYZ")) {
+                        AddWatchAddress(sel->ped_ptr + offsets::player::kPedPosXOffset, WatchValueType::Vec3f, sel->name.c_str());
+                    }
+                }
+            }
+        }
+        ImGui::EndChild();
+    }
+}
+
+void InspectorMenu::RenderSectionVehiclePool(float ui_scale) {
+    const auto pal = detail::GetThemePalette(config_.theme, config_.window_bg_alpha);
+
+    ImGui::SetNextItemWidth(160.0f * ui_scale);
+    ImGui::InputText("VehID / Слот", vehicle_search_buf_, sizeof(vehicle_search_buf_));
+    ImGui::SameLine();
+    if (detail::DrawFilterChip("Все", vehicle_quick_preset_ == 0, pal)) vehicle_quick_preset_ = 0;
+    ImGui::SameLine();
+    if (detail::DrawFilterChip("< 150 м", vehicle_quick_preset_ == 1, pal)) vehicle_quick_preset_ = 1;
+    ImGui::SameLine();
+    if (detail::DrawFilterChip("В движении", vehicle_quick_preset_ == 2, pal)) vehicle_quick_preset_ = 2;
+    ImGui::SameLine();
+    if (detail::DrawFilterChip("Подтип 11", vehicle_quick_preset_ == 3, pal)) vehicle_quick_preset_ = 3;
+    ImGui::SameLine();
+    if (detail::DrawFilterChip("С CVehicle*", vehicle_quick_preset_ == 4, pal)) vehicle_quick_preset_ = 4;
+
+    std::vector<const inspector::VehicleEntry*> rows;
+    rows.reserve(snapshot_.vehicles.size());
+    for (const auto& v : snapshot_.vehicles) {
+        if (vehicle_quick_preset_ == 1 && (!v.game_vehicle_valid || v.distance_to_local > 150.0f)) continue;
+        if (vehicle_quick_preset_ == 2 && (!v.game_vehicle_valid || v.speed_magnitude * 3.6f < 1.5f)) continue;
+        if (vehicle_quick_preset_ == 3 && v.class_subtype != 11) continue;
+        if (vehicle_quick_preset_ == 4 && !v.game_vehicle_valid) continue;
+
+        if (vehicle_search_buf_[0] != '\0') {
+            char tmp[32]{};
+            std::snprintf(tmp, sizeof(tmp), "%u %u %u", v.slot_index, v.vehicle_id, v.class_subtype);
+            if (!detail::ContainsCaseInsensitive(tmp, vehicle_search_buf_)) continue;
+        }
+        rows.push_back(&v);
+    }
+
+    const float avail_w  = ImGui::GetContentRegionAvail().x;
+    const bool has_sel   = (selected_vehicle_slot_ >= 0);
+    const bool side_card = has_sel && (avail_w >= 700.0f * ui_scale);
+    const float tbl_w    = side_card ? (avail_w * 0.62f) : 0.0f;
+    const float tbl_h    = (has_sel && !side_card) ? (ImGui::GetContentRegionAvail().y * 0.56f) : 0.0f;
+
+    if (ImGui::BeginTable("##VehiclesAdaptiveTbl", 7,
+                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                          ImGuiTableFlags_ScrollY | ImGuiTableFlags_Sortable |
+                          ImGuiTableFlags_SizingStretchProp,
+                          ImVec2(tbl_w, tbl_h))) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("Слот",    ImGuiTableColumnFlags_WidthFixed, 54.0f * ui_scale);
+        ImGui::TableSetupColumn("VehID",   ImGuiTableColumnFlags_WidthFixed, 60.0f * ui_scale);
+        ImGui::TableSetupColumn("Подтип",  ImGuiTableColumnFlags_WidthFixed, 64.0f * ui_scale);
+        ImGui::TableSetupColumn("Скорость",ImGuiTableColumnFlags_WidthFixed, 86.0f * ui_scale);
+        ImGui::TableSetupColumn("Дист.",   ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_DefaultSort, 76.0f * ui_scale);
+        ImGui::TableSetupColumn("Координаты XYZ", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Hex",     ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 48.0f * ui_scale);
+        ImGui::TableHeadersRow();
+
+        if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
+            const int col = (specs->SpecsCount > 0) ? specs->Specs[0].ColumnIndex : 4;
+            const bool asc = (specs->SpecsCount == 0) || (specs->Specs[0].SortDirection == ImGuiSortDirection_Ascending);
+            std::sort(rows.begin(), rows.end(), [&](const auto* a, const auto* b) {
+                if (a->is_local_vehicle != b->is_local_vehicle) return a->is_local_vehicle > b->is_local_vehicle;
+                float diff = 0.0f;
+                if (col == 0) diff = static_cast<float>(a->slot_index) - static_cast<float>(b->slot_index);
+                else if (col == 1) diff = static_cast<float>(a->vehicle_id) - static_cast<float>(b->vehicle_id);
+                else if (col == 2) diff = static_cast<float>(a->class_subtype) - static_cast<float>(b->class_subtype);
+                else if (col == 3) diff = a->speed_magnitude - b->speed_magnitude;
+                else diff = a->distance_to_local - b->distance_to_local;
+                return asc ? (diff < 0.0f) : (diff > 0.0f);
+            });
+        }
+
+        ApplyTouchKineticScrolling();
+        ImGuiListClipper clipper;
+        clipper.Begin(static_cast<int>(rows.size()));
+        while (clipper.Step()) {
+            for (int r = clipper.DisplayStart; r < clipper.DisplayEnd; ++r) {
+                const auto* v = rows[static_cast<size_t>(r)];
+                const bool is_sel = (selected_vehicle_slot_ == static_cast<int>(v->slot_index));
+
+                ImGui::TableNextRow();
+                ImGui::PushID(static_cast<int>(v->slot_index));
+
+                ImGui::TableSetColumnIndex(0);
+                char sl[16]{};
+                std::snprintf(sl, sizeof(sl), "%u", v->slot_index);
+                if (ImGui::Selectable(sl, is_sel)) {
+                    selected_vehicle_slot_ = is_sel ? -1 : static_cast<int>(v->slot_index);
+                }
+
+                ImGui::TableSetColumnIndex(1);
+                if (v->is_local_vehicle) ImGui::TextColored(pal.success, "%u [ВЫ]", v->vehicle_id);
+                else                     ImGui::Text("%u", v->vehicle_id);
+
+                ImGui::TableSetColumnIndex(2);
+                if (v->class_subtype == 11) ImGui::TextColored(pal.warning, "%u", v->class_subtype);
+                else                        ImGui::Text("%u", v->class_subtype);
+
+                ImGui::TableSetColumnIndex(3);
+                ImGui::Text("%.0f км/ч", v->speed_magnitude * 3.6f);
+
+                ImGui::TableSetColumnIndex(4);
+                if (v->game_vehicle_valid) ImGui::Text("%.1f м", v->distance_to_local);
+                else                       ImGui::TextDisabled("-");
+
+                ImGui::TableSetColumnIndex(5);
+                if (v->game_vehicle_valid) ImGui::Text("%.1f, %.1f, %.1f", v->pos[0], v->pos[1], v->pos[2]);
+                else                       ImGui::TextDisabled("CVehicle* == NULL");
+
+                ImGui::TableSetColumnIndex(6);
+                if (ImGui::SmallButton("Hex")) {
+                    JumpToMemoryAddress(v->game_vehicle_ptr ? v->game_vehicle_ptr : v->net_vehicle_ptr,
+                                        "Vehicle", false);
+                }
+                ImGui::PopID();
+            }
+        }
+        ImGui::EndTable();
+    }
+
+    if (has_sel) {
+        if (side_card) ImGui::SameLine();
+        const inspector::VehicleEntry* sel = nullptr;
+        for (const auto& v : snapshot_.vehicles) {
+            if (static_cast<int>(v.slot_index) == selected_vehicle_slot_) {
+                sel = &v;
+                break;
+            }
+        }
+        if (ImGui::BeginChild("##VehicleDetailCard", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Border)) {
+            ApplyTouchKineticScrolling();
+            if (!sel) {
+                ImGui::TextDisabled("Слот авто #%d освобождён.", selected_vehicle_slot_);
+                if (ImGui::SmallButton("Закрыть")) selected_vehicle_slot_ = -1;
+            } else {
+                ImGui::TextColored(pal.accent, "Слот #%u | VehID %u (подтип %u)",
+                                   sel->slot_index, sel->vehicle_id, sel->class_subtype);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Закрыть")) selected_vehicle_slot_ = -1;
+                ImGui::Separator();
+
+                ImGui::Text("CNetVehicle*: 0x%" PRIXPTR, sel->net_vehicle_ptr);
+                ImGui::Text("CVehicle*:    0x%" PRIXPTR, sel->game_vehicle_ptr);
+                ImGui::Text("BackRef (+0xB8): 0x%" PRIXPTR " | +0x790: %.2f",
+                            sel->back_ref_b8, sel->special_float_790);
+                ImGui::Text("Скорость: %.2f м/с (%.1f км/ч)", sel->speed_magnitude, sel->speed_magnitude * 3.6f);
+                ImGui::Text("MoveSpeed (+0x180): (%.3f, %.3f, %.3f)",
+                            sel->move_speed[0], sel->move_speed[1], sel->move_speed[2]);
+                ImGui::Text("TurnSpeed (+0x18C): (%.3f, %.3f, %.3f)",
+                            sel->turn_speed[0], sel->turn_speed[1], sel->turn_speed[2]);
+
+                if (sel->game_vehicle_ptr != 0 && ImGui::SmallButton("CVehicle -> Hex")) {
+                    JumpToMemoryAddress(sel->game_vehicle_ptr, "CVehicle", false);
+                }
+                ImGui::SameLine();
+                if (sel->game_vehicle_ptr != 0 && ImGui::SmallButton("+ Watch Speed")) {
+                    AddWatchAddress(sel->game_vehicle_ptr + offsets::vehicle::kVehMoveSpeedOffset,
+                                    WatchValueType::Vec3f, "Veh MoveSpeed");
+                }
+            }
+        }
+        ImGui::EndChild();
+    }
+}
+
+void InspectorMenu::RenderSectionNetwork(uintptr_t module_base, float ui_scale) {
+    const auto pal = detail::GetThemePalette(config_.theme, config_.window_bg_alpha);
+    const auto& rc = snapshot_.rakclient;
+
+    // Шапка RakClient и управления Read-Only монитором
+    detail::DrawStatusPill(rc.is_connected ? "RAKNET ONLINE" : "RAKNET OFFLINE", rc.is_connected, pal);
+    ImGui::SameLine();
+    ImGui::Text("Ping: %d мс (avg %d / min %d) | MTU %d | %.1f пкт/с, %.1f RPC/с",
+                rc.last_ping, rc.average_ping, rc.lowest_ping, rc.mtu_size,
+                rate_pkts_per_sec_, rate_rpcs_per_sec_);
+
+    const bool obs_on = net::NetworkCatalogAndObserver::IsObserverInstalled();
+    if (!obs_on) {
+        if (ImGui::Button("Включить пассивный Read-Only монитор Send/RPC (0x01A513B8 / 0x01A51AC8)") && module_base != 0) {
+            net::NetworkCatalogAndObserver::InstallPassiveObserver(module_base);
+        }
+    } else {
+        detail::DrawStatusPill("МОНИТОР АКТИВЕН", true, pal);
+    }
+    ImGui::SameLine();
+    if (detail::DrawFilterChip("Live-монитор и Byte-Diff", net_subtab_ == 0, pal)) net_subtab_ = 0;
+    ImGui::SameLine();
+    if (detail::DrawFilterChip("Raw-пакеты (11 ID)", net_subtab_ == 1, pal)) net_subtab_ = 1;
+    ImGui::SameLine();
+    if (detail::DrawFilterChip("Каталог RPC (26 ID)", net_subtab_ == 2, pal)) net_subtab_ = 2;
+
+    ImGui::Separator();
+
+    std::vector<net::CapturedNetEvent> events;
+    std::vector<net::CounterSnapshotEntry> pkt_counters, rpc_counters;
+    uint64_t total_pkts = 0, total_rpcs = 0;
+    net::NetworkCatalogAndObserver::GetCapturedSnapshot(events, pkt_counters, rpc_counters, total_pkts, total_rpcs);
+
+    if (net_subtab_ == 0) {
+        bool paused = net::NetworkCatalogAndObserver::IsCapturePaused();
+        if (ImGui::Checkbox("Пауза захвата", &paused)) {
+            net::NetworkCatalogAndObserver::SetCapturePaused(paused);
+        }
+        ImGui::SameLine();
+        ImGui::Checkbox("Подсветка изменившихся байт (Byte-Diff)", &highlight_byte_diff_);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Очистить буфер")) {
+            net::NetworkCatalogAndObserver::ClearCapturedEvents();
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Экспорт .CSV")) {
+            ExportNetworkEventsCsv();
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110.0f * ui_scale);
+        ImGui::InputInt("Фильтр ID (-1=все)", &log_filter_id_);
+
+        const float avail_w = ImGui::GetContentRegionAvail().x;
+        const bool split_h  = (avail_w >= 680.0f * ui_scale);
+        const float list_w  = split_h ? (avail_w * 0.50f) : 0.0f;
+        const float list_h  = split_h ? 0.0f : (ImGui::GetContentRegionAvail().y * 0.48f);
+
+        if (ImGui::BeginTable("##NetLiveStreamTbl", 6,
+                              ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                              ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp,
+                              ImVec2(list_w, list_h))) {
+            ImGui::TableSetupScrollFreeze(0, 1);
+            ImGui::TableSetupColumn("#",      ImGuiTableColumnFlags_WidthFixed, 52.0f * ui_scale);
+            ImGui::TableSetupColumn("Тип",    ImGuiTableColumnFlags_WidthFixed, 44.0f * ui_scale);
+            ImGui::TableSetupColumn("ID",     ImGuiTableColumnFlags_WidthFixed, 48.0f * ui_scale);
+            ImGui::TableSetupColumn("Байт",   ImGuiTableColumnFlags_WidthFixed, 50.0f * ui_scale);
+            ImGui::TableSetupColumn("Caller VA");
+            ImGui::TableSetupColumn("Назначение");
+            ImGui::TableHeadersRow();
+
+            ApplyTouchKineticScrolling();
+            for (auto it = events.rbegin(); it != events.rend(); ++it) {
+                const auto& ev = *it;
+                if (log_filter_id_ >= 0 && ev.id != log_filter_id_) continue;
+                const bool is_sel = (selected_event_seq_ == ev.seq_no);
+
+                ImGui::TableNextRow();
+                ImGui::PushID(static_cast<int>(ev.seq_no & 0x7FFFFFFFU));
+
+                ImGui::TableSetColumnIndex(0);
+                char sq[24]{};
+                std::snprintf(sq, sizeof(sq), "%" PRIu64, ev.seq_no);
+                if (ImGui::Selectable(sq, is_sel, ImGuiSelectableFlags_SpanAllColumns)) {
+                    selected_event_seq_ = ev.seq_no;
+                }
+
+                ImGui::TableSetColumnIndex(1);
+                if (ev.kind == net::NetEventKind::RawPacket) ImGui::TextColored(pal.accent, "RAW");
+                else                                         ImGui::TextColored(pal.warning, "RPC");
+
+                ImGui::TableSetColumnIndex(2);
+                ImGui::Text("%d", ev.id);
+
+                ImGui::TableSetColumnIndex(3);
+                ImGui::Text("%d", ev.total_bytes);
+
+                ImGui::TableSetColumnIndex(4);
+                ImGui::Text("0x%07" PRIXPTR, ev.caller_va);
+
+                ImGui::TableSetColumnIndex(5);
+                if (ev.kind == net::NetEventKind::RawPacket) {
+                    const auto* pi = net::NetworkCatalogAndObserver::FindPacketInfo(static_cast<uint8_t>(ev.id));
+                    ImGui::TextDisabled("%s", pi ? pi->role_and_confidence : "Raw Packet");
+                } else {
+                    const auto* ri = net::NetworkCatalogAndObserver::FindRpcInfo(ev.id);
+                    ImGui::TextDisabled("%s", ri ? ri->confidence_note : "RPC Call");
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+
+        if (split_h) ImGui::SameLine();
+
+        if (ImGui::BeginChild("##NetBitStreamInspector", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Border)) {
+            ApplyTouchKineticScrolling();
+            const net::CapturedNetEvent* sel = nullptr;
+            const net::CapturedNetEvent* prev_same_id = nullptr;
+            for (size_t i = 0; i < events.size(); ++i) {
+                if (events[i].seq_no == selected_event_seq_) {
+                    sel = &events[i];
+                    for (size_t j = i; j > 0; --j) {
+                        const auto& cand = events[j - 1];
+                        if (cand.kind == sel->kind && cand.id == sel->id) {
+                            prev_same_id = &cand;
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+            if (!sel && !events.empty()) {
+                sel = &events.back();
+            }
+
+            if (!sel) {
+                ImGui::TextDisabled("Буфер пуст — включите Read-Only монитор Send/RPC выше.");
+            } else {
+                ImGui::TextColored(pal.accent, "Кадр #%" PRIu64 " | %s ID %d (%d бит / %d Б)",
+                                   sel->seq_no,
+                                   (sel->kind == net::NetEventKind::RawPacket) ? "RAW ПАКЕТ" : "RPC",
+                                   sel->id, sel->total_bits, sel->total_bytes);
+                ImGui::Text("Priority: %d | Reliability: %d | Chan: %d | Caller VA: 0x%07" PRIXPTR,
+                            sel->priority, sel->reliability, sel->channel, sel->caller_va);
+                if (module_base != 0 && sel->caller_va != 0) {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Caller -> ASM")) {
+                        JumpToMemoryAddress(module_base + sel->caller_va, "Caller Send/RPC", true);
+                    }
+                }
+                ImGui::Separator();
+
+                if (sel->kind == net::NetEventKind::RawPacket && sel->captured_len > 0) {
+                    const std::string dissected = net::NetworkCatalogAndObserver::DissectPacketPayload(
+                        static_cast<uint8_t>(sel->id),
+                        sel->preview_bytes.data(),
+                        sel->captured_len,
+                        sel->total_bits);
+                    ImGui::TextWrapped("%s", dissected.c_str());
+                }
+
+                ImGui::Spacing();
+                ImGui::TextDisabled("Hex-дамп первых %zu байт (жёлтым отмечены байты, изменившиеся с прошлого ID %d):",
+                                    sel->captured_len, sel->id);
+
+                for (size_t row = 0; row < sel->captured_len; row += 16) {
+                    ImGui::TextDisabled("+%02zX:", row);
+                    for (size_t b = 0; b < 16 && (row + b) < sel->captured_len; ++b) {
+                        ImGui::SameLine(0.0f, (b == 8) ? 10.0f * ui_scale : 4.0f * ui_scale);
+                        const size_t idx = row + b;
+                        const bool diff = highlight_byte_diff_ && prev_same_id &&
+                                          idx < prev_same_id->captured_len &&
+                                          prev_same_id->preview_bytes[idx] != sel->preview_bytes[idx];
+                        if (diff) {
+                            ImGui::TextColored(pal.warning, "%02X", sel->preview_bytes[idx]);
+                        } else {
+                            ImGui::Text("%02X", sel->preview_bytes[idx]);
+                        }
+                    }
+                }
+            }
+        }
+        ImGui::EndChild();
+    } else if (net_subtab_ == 1) {
+        const auto& pkts = net::NetworkCatalogAndObserver::GetPacketCatalog();
+        if (ImGui::BeginTable("##RawPktCatalog2", 7,
+                              ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                              ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupScrollFreeze(0, 1);
+            ImGui::TableSetupColumn("ID",          ImGuiTableColumnFlags_WidthFixed, 44.0f * ui_scale);
+            ImGui::TableSetupColumn("Роль");
+            ImGui::TableSetupColumn("Размер",      ImGuiTableColumnFlags_WidthFixed, 80.0f * ui_scale);
+            ImGui::TableSetupColumn("Сериализатор",ImGuiTableColumnFlags_WidthFixed, 92.0f * ui_scale);
+            ImGui::TableSetupColumn("Счётчик",     ImGuiTableColumnFlags_WidthFixed, 76.0f * ui_scale);
+            ImGui::TableSetupColumn("Структура полей");
+            ImGui::TableSetupColumn("Код",         ImGuiTableColumnFlags_WidthFixed, 54.0f * ui_scale);
+            ImGui::TableHeadersRow();
+
+            ApplyTouchKineticScrolling();
+            for (const auto& p : pkts) {
+                uint64_t cnt = 0;
+                for (const auto& c : pkt_counters) {
+                    if (c.id == p.packet_id) { cnt = c.count; break; }
+                }
+                ImGui::TableNextRow();
+                ImGui::PushID(p.packet_id);
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextColored(pal.accent, "%u", p.packet_id);
+                ImGui::TableSetColumnIndex(1);
+                ImGui::TextUnformatted(p.role_and_confidence);
+                ImGui::TableSetColumnIndex(2);
+                if (p.logical_size_bytes > 0) ImGui::Text("%d Б", p.logical_size_bytes);
+                else                          ImGui::TextDisabled("перем.");
+                ImGui::TableSetColumnIndex(3);
+                ImGui::TextDisabled("%s", p.serializer_va);
+                ImGui::TableSetColumnIndex(4);
+                ImGui::Text("%" PRIu64, cnt);
+                ImGui::TableSetColumnIndex(5);
+                ImGui::TextDisabled("%s", p.layout_summary);
+                ImGui::TableSetColumnIndex(6);
+                const uintptr_t sva = ParseHexVaString(p.serializer_va);
+                if (sva != 0 && ImGui::SmallButton("ASM") && module_base != 0) {
+                    JumpToMemoryAddress(module_base + sva, p.role_and_confidence, true);
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+    } else {
+        ImGui::Checkbox("Только 18 строгих RPC кандидатов", &rpc_only_strict_);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(180.0f * ui_scale);
+        ImGui::InputText("Поиск RPC", rpc_search_buf_, sizeof(rpc_search_buf_));
+
+        const auto& rpcs = net::NetworkCatalogAndObserver::GetRpcCatalog();
+        if (ImGui::BeginTable("##RpcCatalog2", 6,
+                              ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                              ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupScrollFreeze(0, 1);
+            ImGui::TableSetupColumn("RPC ID",     ImGuiTableColumnFlags_WidthFixed, 64.0f * ui_scale);
+            ImGui::TableSetupColumn("Класс",      ImGuiTableColumnFlags_WidthFixed, 74.0f * ui_scale);
+            ImGui::TableSetupColumn("Примечание и подсистема");
+            ImGui::TableSetupColumn("Примеры VA", ImGuiTableColumnFlags_WidthFixed, 120.0f * ui_scale);
+            ImGui::TableSetupColumn("Вызовов",    ImGuiTableColumnFlags_WidthFixed, 76.0f * ui_scale);
+            ImGui::TableSetupColumn("Код",        ImGuiTableColumnFlags_WidthFixed, 54.0f * ui_scale);
+            ImGui::TableHeadersRow();
+
+            ApplyTouchKineticScrolling();
+            for (const auto& r : rpcs) {
+                if (rpc_only_strict_ && !r.is_strict_candidate) continue;
+                if (rpc_search_buf_[0] != '\0') {
+                    char tmp[96]{};
+                    std::snprintf(tmp, sizeof(tmp), "%d %s", r.rpc_id, r.confidence_note);
+                    if (!detail::ContainsCaseInsensitive(tmp, rpc_search_buf_)) continue;
+                }
+                uint64_t cnt = 0;
+                for (const auto& c : rpc_counters) {
+                    if (c.id == r.rpc_id) { cnt = c.count; break; }
+                }
+                ImGui::TableNextRow();
+                ImGui::PushID(r.rpc_id);
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextColored(pal.accent, "%d", r.rpc_id);
+                ImGui::TableSetColumnIndex(1);
+                if (r.is_strict_candidate) ImGui::TextColored(pal.success, "Строгий");
+                else                       ImGui::TextDisabled("Широкий");
+                ImGui::TableSetColumnIndex(2);
+                ImGui::TextUnformatted(r.confidence_note);
+                ImGui::TableSetColumnIndex(3);
+                ImGui::TextDisabled("%s", r.sample_callsites_va);
+                ImGui::TableSetColumnIndex(4);
+                ImGui::Text("%" PRIu64, cnt);
+                ImGui::TableSetColumnIndex(5);
+                const uintptr_t cva = ParseHexVaString(r.sample_callsites_va);
+                if (cva != 0 && ImGui::SmallButton("ASM") && module_base != 0) {
+                    JumpToMemoryAddress(module_base + cva, r.confidence_note, true);
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+    }
+}
+
+// ============================================================================
+// Раздел 7 — MOD (наши функции поверх референсного инспектора)
+// ============================================================================
+void InspectorMenu::RenderSectionMod(float ui_scale) {
     const auto& lp = snapshot_.local_player;
 
     ImGui::TextColored(ImVec4(1.00f, 0.80f, 0.25f, 1.0f), "MOD — действия (16.111.19050)");
+    ImGui::SameLine();
     if (lp.valid) {
         char head[192]{};
         std::snprintf(head, sizeof(head),
@@ -373,10 +1340,8 @@ void InspectorMenu::RenderTabMod() {
                       lp.player_id, lp.name.empty() ? "?" : lp.name.c_str(),
                       lp.ped_float_4b0, lp.pos[0], lp.pos[1], lp.pos[2],
                       lp.local_vehicle_ptr != 0 ? " | за рулём" : "");
-        ImGui::SameLine();
         ImGui::TextDisabled("%s", head);
     } else {
-        ImGui::SameLine();
         ImGui::TextDisabled("(локальный игрок не активен)");
     }
 
@@ -386,7 +1351,7 @@ void InspectorMenu::RenderTabMod() {
                            "%s", mod_msg_text_);
     }
 
-    // --- Лечилка + Турбо -------------------------------------------------
+    // --- Лечилка + Турбо ---------------------------------------------------
     if (ImGui::SmallButton("ЛЕЧИЛКА (HP/Armor = 100)")) {
         const auto r = br::mod::HealLocal();
         mod_msg_ = r.ok ? 1 : 2;
@@ -410,20 +1375,21 @@ void InspectorMenu::RenderTabMod() {
         }
     }
 
-    // --- Телепорт ---------------------------------------------------------
+    // --- Телепорт -----------------------------------------------------------
     ImGui::SeparatorText("Телепорт");
-    if (lp.ped_valid) {
-        if (ImGui::SmallButton("Тек. позиция")) {
-            mod_tx_ = lp.pos[0];
-            mod_ty_ = lp.pos[1];
-            mod_tz_ = lp.pos[2];
-        }
-        ImGui::SameLine();
+    if (lp.ped_valid && ImGui::SmallButton("Тек. позиция")) {
+        mod_tx_ = lp.pos[0];
+        mod_ty_ = lp.pos[1];
+        mod_tz_ = lp.pos[2];
     }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(120.0f * ui_scale);
     ImGui::InputFloat("X", &mod_tx_);
     ImGui::SameLine();
+    ImGui::SetNextItemWidth(120.0f * ui_scale);
     ImGui::InputFloat("Y", &mod_ty_);
     ImGui::SameLine();
+    ImGui::SetNextItemWidth(120.0f * ui_scale);
     ImGui::InputFloat("Z", &mod_tz_);
     ImGui::SameLine();
     if (ImGui::SmallButton("ТЕЛЕПОРТ") && lp.valid) {
@@ -432,7 +1398,7 @@ void InspectorMenu::RenderTabMod() {
         std::snprintf(mod_msg_text_, sizeof(mod_msg_text_), "%s", r.msg);
     }
 
-    // --- Машины -----------------------------------------------------------
+    // --- Машины -------------------------------------------------------------
     ImGui::SeparatorText("Машины (VehiclePool) — «Въехать» / «Телепорт»");
     if (snapshot_.vehicles.empty()) {
         ImGui::TextDisabled("VehiclePool пуст (ещё не заполнен или чит не сработал)");
@@ -495,7 +1461,7 @@ void InspectorMenu::RenderTabMod() {
         }
     }
 
-    // --- Игроки ------------------------------------------------------------
+    // --- Игроки ---------------------------------------------------------------
     ImGui::SeparatorText("Игроки (PlayerPool) — «Телепорт»");
     bool any_player = false;
     if (ImGui::BeginTable("##ModPlayers", 5,
@@ -532,965 +1498,6 @@ void InspectorMenu::RenderTabMod() {
     }
     if (!any_player) {
         ImGui::TextDisabled("Дистанционные игроки не видны");
-    }
-}
-
-void InspectorMenu::RenderTabModuleAndImGui(const InternalImGuiRuntimeTable& rt_table) {
-    ImGui::TextColored(ImVec4(0.32f, 0.85f, 0.98f, 1.0f),
-                       "Сводка бинаря %s — %s",
-                       offsets::kTargetModuleName,
-                       offsets::kTargetBuildVersion);
-
-    const std::string obs_bid = InternalImGuiBridge::FormatBuildIdHex(rt_table.observed_build_id);
-    const std::string exp_bid = InternalImGuiBridge::FormatBuildIdHex(offsets::kExpectedGnuBuildId);
-
-    ImGui::BulletText("Эталонный SHA-256: %s", offsets::kTargetSha256);
-    ImGui::BulletText("GNU Build-ID (.note +0x2E0): %s (ожидался %s)",
-                      obs_bid.c_str(), exp_bid.c_str());
-    ImGui::BulletText("Режим работы: Собственный изолированный рендер OpenGL ES 3.0 + Read-Only SafeMemory");
-
-    ImGui::Spacing();
-    if (ImGui::CollapsingHeader("Собственный контекст Dear ImGui 1.90.9 (Standalone OpenGL ES 3.0)",
-                                ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGuiIO& io = ImGui::GetIO();
-        ImGuiContext* ctx = ImGui::GetCurrentContext();
-
-        ImGui::Text("Own ImGuiContext*: 0x%" PRIXPTR " | Отрисовано кадров: %" PRIu64,
-                    reinterpret_cast<uintptr_t>(ctx),
-                    rt_table.rendered_frames_total);
-        ImGui::Text("Хук кадра GLES3: %s",
-                    rt_table.render_hook_name ? rt_table.render_hook_name : "-");
-        ImGui::Text("Хук тачскрина:   %s",
-                    rt_table.touch_hook_name ? rt_table.touch_hook_name : "-");
-        ImGui::Text("Шрифт меню:      %s",
-                    rt_table.loaded_font_label ? rt_table.loaded_font_label : "-");
-        ImGui::Text("Поверхность: %.0f x %.0f | FPS: %.1f | Касаний: %" PRIu64 " (X=%.0f, Y=%.0f, %s)",
-                    io.DisplaySize.x, io.DisplaySize.y, io.Framerate,
-                    rt_table.touch_events_total,
-                    rt_table.last_touch_x, rt_table.last_touch_y,
-                    rt_table.last_touch_down ? "НАЖАТ" : "ОТПУЩЕН");
-
-        uintptr_t client_gimgui = 0;
-        if (rt_table.module_base != 0) {
-            mem::SafeMemory::Read<uintptr_t>(
-                rt_table.module_base + offsets::imgui_va::kGImGuiPtr, client_gimgui);
-        }
-        ImGui::TextDisabled("Справочно (клиентский GImGui @ VA 0x03C9D9D0): 0x%" PRIXPTR " (не используется нашим меню)",
-                            client_gimgui);
-    }
-
-    ImGui::Spacing();
-    if (ImGui::CollapsingHeader("Глобальные указатели пулов (.bss 0x036130A0..0x03613100)",
-                                ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Checkbox("Разрешить константные vtable-геттеры пинга/MTU у RakClient",
-                        &config_.allow_rakclient_vcall);
-
-        if (ImGui::BeginTable("##GlobalPoolsTable", 5,
-                              ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
-            ImGui::TableSetupColumn("Глобаль");
-            ImGui::TableSetupColumn("Статический VA");
-            ImGui::TableSetupColumn("Текущий указатель");
-            ImGui::TableSetupColumn("Сводка");
-            ImGui::TableSetupColumn("Память");
-            ImGui::TableHeadersRow();
-
-            struct PoolRow {
-                const char* name;
-                uintptr_t   static_va;
-                uintptr_t   live_ptr;
-                char        summary[64];
-            };
-
-            PoolRow rows[6]{};
-            rows[0] = {"g_pRakClient", offsets::globals::kRakClientInterfacePtr, snapshot_.rakclient.rakclient_ptr, ""};
-            std::snprintf(rows[0].summary, sizeof(rows[0].summary),
-                          "vtable %s", snapshot_.rakclient.vtable_verified ? "0x2140BF0 OK" : "не совп./NULL");
-
-            rows[1] = {"g_pPlayerPool", offsets::globals::kPlayerPoolPtr, snapshot_.player_pool_ptr, ""};
-            std::snprintf(rows[1].summary, sizeof(rows[1].summary),
-                          "Активных удалённых: %zu / 1504", snapshot_.remote_players.size());
-
-            rows[2] = {"g_pVehiclePool", offsets::globals::kVehiclePoolPtr, snapshot_.vehicle_pool_ptr, ""};
-            std::snprintf(rows[2].summary, sizeof(rows[2].summary),
-                          "Активных слотов: %zu / 2000", snapshot_.vehicles.size());
-
-            rows[3] = {"g_pObjectPool", offsets::globals::kObjectPoolPtr, snapshot_.object_pool_ptr, ""};
-            std::snprintf(rows[3].summary, sizeof(rows[3].summary),
-                          "Активных слотов: %zu / 4096", snapshot_.active_object_slots);
-
-            rows[4] = {"g_pAuxPool_0C8", offsets::globals::kPickupOrAuxPoolPtr, snapshot_.pickup_aux_pool_ptr, "Вспом. пул (0x17DD60C)"};
-            rows[5] = {"g_pAuxPool_0F8", offsets::globals::kTextLabelOrAuxPoolPtr, snapshot_.textlabel_aux_pool_ptr, "Пул меток/состояний (0x17899C0)"};
-
-            for (int i = 0; i < 6; ++i) {
-                ImGui::PushID(i);
-                ImGui::TableNextRow();
-                ImGui::TableSetColumnIndex(0);
-                ImGui::TextUnformatted(rows[i].name);
-                ImGui::TableSetColumnIndex(1);
-                ImGui::Text("0x%07" PRIXPTR, rows[i].static_va);
-                ImGui::TableSetColumnIndex(2);
-                if (rows[i].live_ptr != 0) {
-                    ImGui::Text("0x%012" PRIXPTR, rows[i].live_ptr);
-                } else {
-                    ImGui::TextDisabled("NULL");
-                }
-                ImGui::TableSetColumnIndex(3);
-                ImGui::TextUnformatted(rows[i].summary);
-                ImGui::TableSetColumnIndex(4);
-                ImGui::BeginDisabled(rows[i].live_ptr == 0);
-                if (ImGui::SmallButton("Hex ->")) {
-                    JumpToMemoryAddress(rows[i].live_ptr, rows[i].name);
-                }
-                ImGui::EndDisabled();
-                ImGui::PopID();
-            }
-            ImGui::EndTable();
-        }
-    }
-}
-
-void InspectorMenu::RenderTabLocalPlayer() {
-    const auto& lp = snapshot_.local_player;
-    if (!lp.valid) {
-        ImGui::TextColored(ImVec4(0.95f, 0.65f, 0.25f, 1.0f),
-                           "CLocalPlayer сейчас не активен (PlayerPool == NULL или игрок ещё не подключён).");
-        return;
-    }
-
-    ImGui::TextColored(ImVec4(0.30f, 0.88f, 0.96f, 1.0f),
-                       "CLocalPlayer [0x%" PRIXPTR "] — ID: %u | Никнейм: %s",
-                       lp.local_player_ptr,
-                       lp.player_id,
-                       lp.name.empty() ? "<пусто>" : lp.name.c_str());
-
-    if (ImGui::SmallButton("Открыть CLocalPlayer в Hex")) {
-        JumpToMemoryAddress(lp.local_player_ptr, "CLocalPlayer");
-    }
-    if (lp.ped_ptr != 0) {
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Открыть CPed в Hex")) {
-            JumpToMemoryAddress(lp.ped_ptr, "Local CPed");
-        }
-    }
-    if (lp.local_vehicle_ptr != 0) {
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Открыть CVehicle в Hex")) {
-            JumpToMemoryAddress(lp.local_vehicle_ptr, "Local CVehicle (+0x40)");
-        }
-    }
-
-    ImGui::Spacing();
-    if (ImGui::BeginTable("##LocalPlayerFields", 4,
-                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupColumn("Объект / Смещение");
-        ImGui::TableSetupColumn("Тип");
-        ImGui::TableSetupColumn("Значение");
-        ImGui::TableSetupColumn("Доказательство по 16.111.19050");
-        ImGui::TableHeadersRow();
-
-        auto row = [](const char* off, const char* type, const char* val, const char* ev) {
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(off);
-            ImGui::TableSetColumnIndex(1); ImGui::TextDisabled("%s", type);
-            ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(val);
-            ImGui::TableSetColumnIndex(3); ImGui::TextUnformatted(ev);
-        };
-
-        char buf[128]{};
-        std::snprintf(buf, sizeof(buf), "%u (0x%04X)", lp.player_id, lp.player_id);
-        row("LocalPlayer + 0x00", "u16", buf, "CLocalPlayer::GetID (0x178BB3C)");
-
-        row("LocalPlayer + 0x02", "char[]", lp.name.c_str(), "CLocalPlayer::GetName (0x178BC0C)");
-
-        std::snprintf(buf, sizeof(buf), "0x%" PRIXPTR, lp.ped_ptr);
-        row("LocalPlayer + 0x38", "CPed*", buf, "CLocalPlayer::GetPlayerPed (0x178BB44), sender 30");
-
-        std::snprintf(buf, sizeof(buf), "0x%" PRIXPTR " (vehID=%u, type=%u)",
-                      lp.local_vehicle_ptr, lp.local_vehicle_id, lp.local_vehicle_subtype);
-        row("LocalPlayer + 0x40", "CVehicle*", buf, "Sender 34 (0x178BDB0 -> veh+0x434)");
-
-        if (lp.ped_valid) {
-            std::snprintf(buf, sizeof(buf), "X=%.3f, Y=%.3f, Z=%.3f", lp.pos[0], lp.pos[1], lp.pos[2]);
-            row("CPed + 0x38..0x40", "float[3]", buf, "Позиция XYZ (apply 0x17D4188 / sender 30 0x178EE04)");
-
-            std::snprintf(buf, sizeof(buf), "0x%" PRIXPTR, lp.matrix_ptr);
-            row("CPed + 0x48", "void*", buf, "Матрица трансформации в сериализаторе 30/31");
-
-            std::snprintf(buf, sizeof(buf), "%.3f  (u16 wire: %u)",
-                          lp.ped_float_4b0,
-                          static_cast<uint16_t>(std::clamp(lp.ped_float_4b0, 0.0f, 65535.0f)));
-            row("CPed + 0x4B0", "float", buf, "Конвертируется в u16 в пакетах 30 и 33 (HP-like)");
-
-            std::snprintf(buf, sizeof(buf), "%.3f  (u16 wire: %u)",
-                          lp.ped_float_4b8,
-                          static_cast<uint16_t>(std::clamp(lp.ped_float_4b8, 0.0f, 65535.0f)));
-            row("CPed + 0x4B8", "float", buf, "Конвертируется в u16 в пакетах 30 и 33 (Armour-like)");
-
-            std::snprintf(buf, sizeof(buf), "0x%" PRIXPTR " | flag(+0x548) = %u",
-                          lp.ped_vehicle_ptr, lp.ped_in_vehicle_flag);
-            row("CPed + 0x540 / +0x548", "ptr / u8", buf, "Связь педа с транспортом (0x17D4188)");
-        }
-
-        std::snprintf(buf, sizeof(buf), "+1F4=0x%08X | +1F8=0x%08X | +200=0x%08X",
-                      lp.sync_field_1f4, lp.sync_field_1f8, lp.sync_field_200);
-        row("LocalPlayer + 0x1F4..0x200", "u32[3]", buf, "Источники синхронизации пакета 30 (0x178EE04)");
-
-        ImGui::EndTable();
-    }
-
-    ImGui::Spacing();
-    ImGui::TextColored(ImVec4(0.65f, 0.82f, 0.95f, 1.0f),
-                       "Кэш дифференциальной отправки пакета 33 (LocalPlayer + 0xF0..+0x10B, 28 Б):");
-    char hex_line[160]{};
-    size_t pos = 0;
-    for (size_t i = 0; i < lp.cache_block_f0.size() && pos + 4 < sizeof(hex_line); ++i) {
-        pos += static_cast<size_t>(
-            std::snprintf(hex_line + pos, sizeof(hex_line) - pos, "%02X ", lp.cache_block_f0[i]));
-    }
-    ImGui::TextUnformatted(hex_line);
-}
-
-void InspectorMenu::RenderTabPlayerPool() {
-    ImGui::SetNextItemWidth(240.0f);
-    ImGui::InputTextWithHint("##PlayerSearch", "Поиск по нику или ID...",
-                             player_search_buf_, sizeof(player_search_buf_));
-    ImGui::SameLine();
-    ImGui::Checkbox("Только с CPed*", &filter_players_with_ped_);
-    ImGui::SameLine();
-    ImGui::Checkbox("Только в авто (+0x548)", &filter_players_in_veh_);
-    ImGui::SameLine();
-    ImGui::TextDisabled("Активно: %zu / %zu (лимит ID %u)",
-                        snapshot_.remote_players.size(),
-                        offsets::player::kPlayerPoolSlotCount,
-                        offsets::player::kMaxPlayerId);
-
-    std::vector<const inspector::RemotePlayerEntry*> filtered;
-    filtered.reserve(snapshot_.remote_players.size());
-
-    int exact_id_query = -1;
-    if (player_search_buf_[0] >= '0' && player_search_buf_[0] <= '9') {
-        exact_id_query = std::atoi(player_search_buf_);
-    }
-
-    for (const auto& p : snapshot_.remote_players) {
-        if (filter_players_with_ped_ && !p.ped_valid) continue;
-        if (filter_players_in_veh_ && p.ped_in_vehicle == 0 && p.ped_vehicle_ptr == 0) continue;
-
-        if (player_search_buf_[0] != '\0') {
-            const bool id_match = (exact_id_query >= 0 &&
-                                   (static_cast<int>(p.slot_id) == exact_id_query ||
-                                    static_cast<int>(p.reported_id) == exact_id_query));
-            if (!id_match && !ContainsCaseInsensitive(p.name, player_search_buf_)) {
-                continue;
-            }
-        }
-        filtered.push_back(&p);
-    }
-
-    const float table_h = (selected_remote_slot_ >= 0)
-        ? ImGui::GetContentRegionAvail().y * 0.65f
-        : ImGui::GetContentRegionAvail().y;
-
-    const ImGuiTableFlags tflags =
-        ImGuiTableFlags_Borders |
-        ImGuiTableFlags_RowBg |
-        ImGuiTableFlags_ScrollY |
-        ImGuiTableFlags_Resizable |
-        ImGuiTableFlags_SizingStretchProp;
-
-    if (ImGui::BeginTable("##RemotePlayerPoolTable", 8, tflags, ImVec2(0.0f, table_h))) {
-        ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Слот", ImGuiTableColumnFlags_WidthFixed, 55.0f);
-        ImGui::TableSetupColumn("Ник (+0x18)");
-        ImGui::TableSetupColumn("Дист.", ImGuiTableColumnFlags_WidthFixed, 68.0f);
-        ImGui::TableSetupColumn("Позиция XYZ (CPed+0x38)");
-        ImGui::TableSetupColumn("+4B0 / +4B8");
-        ImGui::TableSetupColumn("Авто (+548)");
-        ImGui::TableSetupColumn("Aux A / B");
-        ImGui::TableSetupColumn("Действие", ImGuiTableColumnFlags_WidthFixed, 78.0f);
-        ImGui::TableHeadersRow();
-
-        ImGuiListClipper clipper;
-        clipper.Begin(static_cast<int>(filtered.size()));
-        while (clipper.Step()) {
-            for (int row_i = clipper.DisplayStart; row_i < clipper.DisplayEnd; ++row_i) {
-                const auto* p = filtered[static_cast<size_t>(row_i)];
-                ImGui::PushID(static_cast<int>(p->slot_id));
-                ImGui::TableNextRow();
-
-                ImGui::TableSetColumnIndex(0);
-                const bool is_sel = (selected_remote_slot_ == static_cast<int>(p->slot_id));
-                char id_lbl[24]{};
-                std::snprintf(id_lbl, sizeof(id_lbl), "%u", p->slot_id);
-                if (ImGui::Selectable(id_lbl, is_sel, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap)) {
-                    selected_remote_slot_ = is_sel ? -1 : static_cast<int>(p->slot_id);
-                }
-
-                ImGui::TableSetColumnIndex(1);
-                ImGui::TextUnformatted(p->name.empty() ? "<без имени>" : p->name.c_str());
-
-                ImGui::TableSetColumnIndex(2);
-                if (p->ped_valid) {
-                    ImGui::Text("%.1f м", p->distance_to_local);
-                } else {
-                    ImGui::TextDisabled("вне стрима");
-                }
-
-                ImGui::TableSetColumnIndex(3);
-                if (p->ped_valid) {
-                    ImGui::Text("%.1f, %.1f, %.1f", p->pos[0], p->pos[1], p->pos[2]);
-                } else {
-                    ImGui::TextDisabled("CPed == NULL");
-                }
-
-                ImGui::TableSetColumnIndex(4);
-                if (p->ped_valid) {
-                    ImGui::Text("%.0f / %.0f", p->ped_float_4b0, p->ped_float_4b8);
-                } else {
-                    ImGui::TextDisabled("-");
-                }
-
-                ImGui::TableSetColumnIndex(5);
-                if (p->ped_in_vehicle || p->ped_vehicle_ptr != 0) {
-                    ImGui::TextColored(ImVec4(0.35f, 0.90f, 0.60f, 1.0f), "В авто (%u)", p->ped_in_vehicle);
-                } else {
-                    ImGui::TextDisabled("Пешком");
-                }
-
-                ImGui::TableSetColumnIndex(6);
-                ImGui::Text("%d / %d", p->pool_aux_a, p->pool_aux_b);
-
-                ImGui::TableSetColumnIndex(7);
-                if (ImGui::SmallButton("Hex")) {
-                    char lbl[64]{};
-                    std::snprintf(lbl, sizeof(lbl), "RemotePlayer[%u]", p->slot_id);
-                    JumpToMemoryAddress(p->remote_ptr, lbl);
-                }
-
-                ImGui::PopID();
-            }
-        }
-        ImGui::EndTable();
-    }
-
-    // Нижняя карточка выбранного слота
-    if (selected_remote_slot_ >= 0) {
-        const inspector::RemotePlayerEntry* sel = nullptr;
-        for (const auto& p : snapshot_.remote_players) {
-            if (static_cast<int>(p.slot_id) == selected_remote_slot_) {
-                sel = &p;
-                break;
-            }
-        }
-        if (sel && ImGui::BeginChild("##SelectedRemoteDetail", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Border)) {
-            ImGui::TextColored(ImVec4(0.30f, 0.86f, 0.98f, 1.0f),
-                               "Детали CRemotePlayer [Слот %u, ID(+0x4A)=%u] — %s",
-                               sel->slot_id, sel->reported_id, sel->name.c_str());
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Закрыть")) {
-                selected_remote_slot_ = -1;
-            }
-            ImGui::Text("CRemotePlayer*: 0x%" PRIXPTR " (sizeof 0x288) | CPed*(+0x10): 0x%" PRIXPTR,
-                        sel->remote_ptr, sel->ped_ptr);
-            ImGui::Text("Поля состояния: +0x120=0x%08X | +0x150=0x%" PRIX64 " | +0x15B=0x%02X | +0x15C=%u",
-                        sel->state_120, sel->field_150, sel->byte_15b, sel->u16_15c);
-            if (sel->ped_ptr != 0 && ImGui::SmallButton("Инспектировать CPed этого игрока в Hex")) {
-                char lbl[64]{};
-                std::snprintf(lbl, sizeof(lbl), "CPed (Remote[%u])", sel->slot_id);
-                JumpToMemoryAddress(sel->ped_ptr, lbl);
-            }
-            ImGui::EndChild();
-        } else if (!sel) {
-            selected_remote_slot_ = -1;
-        }
-    }
-}
-
-void InspectorMenu::RenderTabVehiclePool() {
-    ImGui::SetNextItemWidth(200.0f);
-    ImGui::InputTextWithHint("##VehSearch", "Фильтр по VehID или слоту...",
-                             vehicle_search_buf_, sizeof(vehicle_search_buf_));
-    ImGui::SameLine();
-    ImGui::Checkbox("Только с CVehicle*", &filter_vehicles_with_gameptr_);
-    ImGui::SameLine();
-    ImGui::Checkbox("Сорт. по дистанции", &sort_vehicles_by_dist_);
-    ImGui::SameLine();
-    ImGui::TextDisabled("Активно: %zu / %zu (0x17DEE34)",
-                        snapshot_.vehicles.size(),
-                        offsets::vehicle::kVehiclePoolSlotCount);
-
-    std::vector<const inspector::VehicleEntry*> filtered;
-    filtered.reserve(snapshot_.vehicles.size());
-
-    const int query_num = (vehicle_search_buf_[0] != '\0') ? std::atoi(vehicle_search_buf_) : -1;
-    for (const auto& v : snapshot_.vehicles) {
-        if (filter_vehicles_with_gameptr_ && !v.game_vehicle_valid) continue;
-        if (vehicle_search_buf_[0] != '\0') {
-            if (static_cast<int>(v.slot_index) != query_num &&
-                static_cast<int>(v.vehicle_id) != query_num &&
-                static_cast<int>(v.class_subtype) != query_num) {
-                continue;
-            }
-        }
-        filtered.push_back(&v);
-    }
-
-    if (sort_vehicles_by_dist_) {
-        std::sort(filtered.begin(), filtered.end(),
-                  [](const inspector::VehicleEntry* a, const inspector::VehicleEntry* b) {
-                      if (a->is_local_vehicle != b->is_local_vehicle) {
-                          return a->is_local_vehicle > b->is_local_vehicle;
-                      }
-                      if (a->game_vehicle_valid != b->game_vehicle_valid) {
-                          return a->game_vehicle_valid > b->game_vehicle_valid;
-                      }
-                      return a->distance_to_local < b->distance_to_local;
-                  });
-    }
-
-    const ImGuiTableFlags tflags =
-        ImGuiTableFlags_Borders |
-        ImGuiTableFlags_RowBg |
-        ImGuiTableFlags_ScrollY |
-        ImGuiTableFlags_Resizable |
-        ImGuiTableFlags_SizingStretchProp;
-
-    if (ImGui::BeginTable("##VehiclePoolTable", 9, tflags)) {
-        ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Слот", ImGuiTableColumnFlags_WidthFixed, 54.0f);
-        ImGui::TableSetupColumn("VehID (+434)", ImGuiTableColumnFlags_WidthFixed, 82.0f);
-        ImGui::TableSetupColumn("Тип (+430)", ImGuiTableColumnFlags_WidthFixed, 74.0f);
-        ImGui::TableSetupColumn("Дист.", ImGuiTableColumnFlags_WidthFixed, 68.0f);
-        ImGui::TableSetupColumn("Скор.", ImGuiTableColumnFlags_WidthFixed, 68.0f);
-        ImGui::TableSetupColumn("Позиция XYZ (+0x38)");
-        ImGui::TableSetupColumn("CVehicle* / BackRef(+B8)");
-        ImGui::TableSetupColumn("+0x790 (f32)", ImGuiTableColumnFlags_WidthFixed, 84.0f);
-        ImGui::TableSetupColumn("Память", ImGuiTableColumnFlags_WidthFixed, 68.0f);
-        ImGui::TableHeadersRow();
-
-        ImGuiListClipper clipper;
-        clipper.Begin(static_cast<int>(filtered.size()));
-        while (clipper.Step()) {
-            for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
-                const auto* v = filtered[static_cast<size_t>(i)];
-                ImGui::PushID(static_cast<int>(v->slot_index));
-                ImGui::TableNextRow();
-
-                ImGui::TableSetColumnIndex(0);
-                if (v->is_local_vehicle) {
-                    ImGui::TextColored(ImVec4(0.25f, 0.95f, 0.55f, 1.0f), "*%u", v->slot_index);
-                } else {
-                    ImGui::Text("%u", v->slot_index);
-                }
-
-                ImGui::TableSetColumnIndex(1);
-                ImGui::Text("%u", v->vehicle_id);
-
-                ImGui::TableSetColumnIndex(2);
-                ImGui::Text("%u", v->class_subtype);
-
-                ImGui::TableSetColumnIndex(3);
-                if (v->game_vehicle_valid) {
-                    ImGui::Text("%.1f м", v->distance_to_local);
-                } else {
-                    ImGui::TextDisabled("-");
-                }
-
-                ImGui::TableSetColumnIndex(4);
-                ImGui::Text("%.2f", v->speed_magnitude);
-
-                ImGui::TableSetColumnIndex(5);
-                if (v->game_vehicle_valid) {
-                    ImGui::Text("%.1f, %.1f, %.1f", v->pos[0], v->pos[1], v->pos[2]);
-                } else {
-                    ImGui::TextDisabled("NULL CVehicle");
-                }
-
-                ImGui::TableSetColumnIndex(6);
-                ImGui::Text("0x%" PRIXPTR " / 0x%" PRIXPTR, v->game_vehicle_ptr, v->back_ref_b8);
-
-                ImGui::TableSetColumnIndex(7);
-                ImGui::Text("%.2f", v->special_float_790);
-
-                ImGui::TableSetColumnIndex(8);
-                const uintptr_t target = v->game_vehicle_ptr ? v->game_vehicle_ptr : v->net_vehicle_ptr;
-                if (ImGui::SmallButton("Hex")) {
-                    char lbl[64]{};
-                    std::snprintf(lbl, sizeof(lbl), "Vehicle[slot=%u, id=%u]", v->slot_index, v->vehicle_id);
-                    JumpToMemoryAddress(target, lbl);
-                }
-
-                ImGui::PopID();
-            }
-        }
-        ImGui::EndTable();
-    }
-}
-
-void InspectorMenu::RenderTabNetwork(uintptr_t module_base) {
-    const auto& rc = snapshot_.rakclient;
-
-    DrawStatusBadge(rc.vtable_verified ? "RakClient vtable 0x2140BF0" : "RakClient не активен",
-                    rc.vtable_verified);
-    ImGui::SameLine();
-    if (rc.queried_live_methods) {
-        ImGui::Text("Статус: %s | Ping: %d мс (ср. %d, мин. %d) | MTU: %d",
-                    rc.is_connected ? "ПОДКЛЮЧЁН" : "ОТКЛЮЧЁН",
-                    rc.last_ping, rc.average_ping, rc.lowest_ping, rc.mtu_size);
-    } else {
-        ImGui::Text("RakClient*: 0x%" PRIXPTR " (vtable: 0x%" PRIXPTR ")",
-                    rc.rakclient_ptr, rc.vtable_ptr);
-    }
-
-    // Управление пассивным Read-Only наблюдателем Send/RPC
-    const bool obs_installed = net::NetworkCatalogAndObserver::IsObserverInstalled();
-    if (!obs_installed) {
-        if (ImGui::Button("Включить пассивный Read-Only логгер Send/RPC (0x1A513B8 / 0x1A51AC8)")) {
-            net::NetworkCatalogAndObserver::InstallPassiveObserver(module_base);
-        }
-        ImGui::SameLine();
-        ImGui::TextDisabled("(не модифицирует и не отправляет пакеты)");
-    } else {
-        bool paused = net::NetworkCatalogAndObserver::IsCapturePaused();
-        if (ImGui::Checkbox("Пауза записи", &paused)) {
-            net::NetworkCatalogAndObserver::SetCapturePaused(paused);
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Очистить буфер")) {
-            net::NetworkCatalogAndObserver::ClearCapturedEvents();
-        }
-    }
-
-    std::vector<net::CapturedNetEvent>     events;
-    std::vector<net::CounterSnapshotEntry> pkt_counters;
-    std::vector<net::CounterSnapshotEntry> rpc_counters;
-    uint64_t total_pkts = 0;
-    uint64_t total_rpcs = 0;
-    net::NetworkCatalogAndObserver::GetCapturedSnapshot(
-        events, pkt_counters, rpc_counters, total_pkts, total_rpcs);
-
-    ImGui::SameLine();
-    ImGui::TextColored(ImVec4(0.45f, 0.86f, 0.98f, 1.0f),
-                       "| Захвачено: Raw=%llu, RPC=%llu",
-                       static_cast<unsigned long long>(total_pkts),
-                       static_cast<unsigned long long>(total_rpcs));
-    ImGui::Separator();
-
-    if (ImGui::BeginTabBar("##NetworkSubTabs")) {
-        // Подвкладка 1: Каталог Raw BitStream пакетов (ID 27..39)
-        if (ImGui::BeginTabItem("Каталог Raw-пакетов (11 ID / 14 Send)")) {
-            ImGui::TextDisabled("Примечание анализа: 3 generic callback в 0x1933A7C (0x1933C5C/D50/D74) отсеяны как несетевые.");
-            if (ImGui::BeginTable("##RawPacketCatalogTbl", 7,
-                                  ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-                                  ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
-                                  ImGuiTableFlags_SizingStretchProp)) {
-                ImGui::TableSetupScrollFreeze(0, 1);
-                ImGui::TableSetupColumn("ID (Hex)", ImGuiTableColumnFlags_WidthFixed, 82.0f);
-                ImGui::TableSetupColumn("Размер", ImGuiTableColumnFlags_WidthFixed, 72.0f);
-                ImGui::TableSetupColumn("Счётчик", ImGuiTableColumnFlags_WidthFixed, 76.0f);
-                ImGui::TableSetupColumn("Send VA");
-                ImGui::TableSetupColumn("Serializer VA");
-                ImGui::TableSetupColumn("Формат BitStream");
-                ImGui::TableSetupColumn("Роль и уверенность");
-                ImGui::TableHeadersRow();
-
-                for (const auto& entry : net::NetworkCatalogAndObserver::GetPacketCatalog()) {
-                    uint64_t hits = 0;
-                    for (const auto& c : pkt_counters) {
-                        if (c.id == static_cast<int>(entry.packet_id)) {
-                            hits = c.count;
-                            break;
-                        }
-                    }
-
-                    ImGui::TableNextRow();
-                    ImGui::TableSetColumnIndex(0);
-                    ImGui::Text("%u (0x%02X)", entry.packet_id, entry.packet_id);
-                    ImGui::TableSetColumnIndex(1);
-                    if (entry.logical_size_bytes > 0) {
-                        ImGui::Text("%d Б", entry.logical_size_bytes);
-                    } else {
-                        ImGui::TextDisabled("перем.");
-                    }
-                    ImGui::TableSetColumnIndex(2);
-                    if (hits > 0) {
-                        ImGui::TextColored(ImVec4(0.30f, 0.92f, 0.55f, 1.0f), "%llu",
-                                           static_cast<unsigned long long>(hits));
-                    } else {
-                        ImGui::TextDisabled("0");
-                    }
-                    ImGui::TableSetColumnIndex(3);
-                    ImGui::TextUnformatted(entry.send_vas_csv);
-                    ImGui::TableSetColumnIndex(4);
-                    ImGui::TextUnformatted(entry.serializer_va);
-                    ImGui::TableSetColumnIndex(5);
-                    ImGui::TextUnformatted(entry.layout_summary);
-                    ImGui::TableSetColumnIndex(6);
-                    ImGui::TextUnformatted(entry.role_and_confidence);
-                }
-                ImGui::EndTable();
-            }
-            ImGui::EndTabItem();
-        }
-
-        // Подвкладка 2: Каталог исходящих RPC (vtable +0xB0)
-        if (ImGui::BeginTabItem("Каталог RPC (18 Strict / 26 Wide)")) {
-            ImGui::Checkbox("Показать только строгую выборку (18 ID)", &rpc_only_strict_);
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(200.0f);
-            ImGui::InputTextWithHint("##RpcFilter", "Поиск по RPC ID или VA...",
-                                     rpc_search_buf_, sizeof(rpc_search_buf_));
-
-            if (ImGui::BeginTable("##RpcCatalogTbl", 7,
-                                  ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-                                  ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
-                                  ImGuiTableFlags_SizingStretchProp)) {
-                ImGui::TableSetupScrollFreeze(0, 1);
-                ImGui::TableSetupColumn("RPC ID", ImGuiTableColumnFlags_WidthFixed, 92.0f);
-                ImGui::TableSetupColumn("Strict / Wide", ImGuiTableColumnFlags_WidthFixed, 92.0f);
-                ImGui::TableSetupColumn("Функций", ImGuiTableColumnFlags_WidthFixed, 70.0f);
-                ImGui::TableSetupColumn("Счётчик", ImGuiTableColumnFlags_WidthFixed, 76.0f);
-                ImGui::TableSetupColumn("Уровень");
-                ImGui::TableSetupColumn("Примеры Callsite VA");
-                ImGui::TableSetupColumn("Примечание");
-                ImGui::TableHeadersRow();
-
-                for (const auto& r : net::NetworkCatalogAndObserver::GetRpcCatalog()) {
-                    if (rpc_only_strict_ && !r.is_strict_candidate) continue;
-                    if (rpc_search_buf_[0] != '\0') {
-                        char id_str[32]{};
-                        std::snprintf(id_str, sizeof(id_str), "%d 0x%x", r.rpc_id, r.rpc_id);
-                        if (!ContainsCaseInsensitive(id_str, rpc_search_buf_) &&
-                            !ContainsCaseInsensitive(r.sample_callsites_va, rpc_search_buf_)) {
-                            continue;
-                        }
-                    }
-
-                    uint64_t hits = 0;
-                    for (const auto& c : rpc_counters) {
-                        if (c.id == r.rpc_id) {
-                            hits = c.count;
-                            break;
-                        }
-                    }
-
-                    ImGui::TableNextRow();
-                    ImGui::TableSetColumnIndex(0);
-                    ImGui::Text("%d (0x%X)", r.rpc_id, r.rpc_id);
-                    ImGui::TableSetColumnIndex(1);
-                    ImGui::Text("%d / %d", r.strict_callsite_count, r.wide_callsite_count);
-                    ImGui::TableSetColumnIndex(2);
-                    ImGui::Text("%d", r.unique_func_count);
-                    ImGui::TableSetColumnIndex(3);
-                    if (hits > 0) {
-                        ImGui::TextColored(ImVec4(0.30f, 0.92f, 0.55f, 1.0f), "%llu",
-                                           static_cast<unsigned long long>(hits));
-                    } else {
-                        ImGui::TextDisabled("0");
-                    }
-                    ImGui::TableSetColumnIndex(4);
-                    DrawStatusBadge(r.is_strict_candidate ? "STRICT" : "WIDE", r.is_strict_candidate);
-                    ImGui::TableSetColumnIndex(5);
-                    ImGui::TextUnformatted(r.sample_callsites_va);
-                    ImGui::TableSetColumnIndex(6);
-                    ImGui::TextUnformatted(r.confidence_note);
-                }
-                ImGui::EndTable();
-            }
-            ImGui::EndTabItem();
-        }
-
-        // Подвкладка 3: Живой кольцевой буфер захваченных BitStream кадров
-        if (ImGui::BeginTabItem("Живой журнал BitStream (256)")) {
-            ImGui::RadioButton("Все", &log_filter_kind_, 0); ImGui::SameLine();
-            ImGui::RadioButton("Только Raw Send", &log_filter_kind_, 1); ImGui::SameLine();
-            ImGui::RadioButton("Только RPC", &log_filter_kind_, 2); ImGui::SameLine();
-            ImGui::SetNextItemWidth(110.0f);
-            ImGui::InputInt("Фильтр ID (-1=все)", &log_filter_id_);
-
-            const float list_h = ImGui::GetContentRegionAvail().y * 0.58f;
-            const net::CapturedNetEvent* selected_ev = nullptr;
-
-            if (ImGui::BeginTable("##LiveNetEventsTbl", 7,
-                                  ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-                                  ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp,
-                                  ImVec2(0.0f, list_h))) {
-                ImGui::TableSetupScrollFreeze(0, 1);
-                ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 58.0f);
-                ImGui::TableSetupColumn("Тип", ImGuiTableColumnFlags_WidthFixed, 64.0f);
-                ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthFixed, 82.0f);
-                ImGui::TableSetupColumn("Размер", ImGuiTableColumnFlags_WidthFixed, 96.0f);
-                ImGui::TableSetupColumn("Prio/Rel/Ch", ImGuiTableColumnFlags_WidthFixed, 88.0f);
-                ImGui::TableSetupColumn("Caller VA", ImGuiTableColumnFlags_WidthFixed, 100.0f);
-                ImGui::TableSetupColumn("Декодированная сводка");
-                ImGui::TableHeadersRow();
-
-                for (const auto& ev : events) {
-                    if (log_filter_kind_ == 1 && ev.kind != net::NetEventKind::RawPacket) continue;
-                    if (log_filter_kind_ == 2 && ev.kind != net::NetEventKind::RpcCall) continue;
-                    if (log_filter_id_ >= 0 && ev.id != log_filter_id_) continue;
-
-                    ImGui::PushID(static_cast<int>(ev.seq_no));
-                    ImGui::TableNextRow();
-
-                    ImGui::TableSetColumnIndex(0);
-                    const bool is_sel = (selected_event_seq_ == ev.seq_no);
-                    char seq_lbl[24]{};
-                    std::snprintf(seq_lbl, sizeof(seq_lbl), "%llu",
-                                  static_cast<unsigned long long>(ev.seq_no));
-                    if (ImGui::Selectable(seq_lbl, is_sel, ImGuiSelectableFlags_SpanAllColumns)) {
-                        selected_event_seq_ = ev.seq_no;
-                    }
-                    if (is_sel) {
-                        selected_ev = &ev;
-                    }
-
-                    ImGui::TableSetColumnIndex(1);
-                    if (ev.kind == net::NetEventKind::RawPacket) {
-                        ImGui::TextColored(ImVec4(0.35f, 0.85f, 0.98f, 1.0f), "SEND");
-                    } else {
-                        ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.32f, 1.0f), "RPC");
-                    }
-
-                    ImGui::TableSetColumnIndex(2);
-                    ImGui::Text("%d (0x%X)", ev.id, ev.id);
-
-                    ImGui::TableSetColumnIndex(3);
-                    ImGui::Text("%d Б (%d б)", ev.total_bytes, ev.total_bits);
-
-                    ImGui::TableSetColumnIndex(4);
-                    ImGui::Text("%d / %d / %d", ev.priority, ev.reliability, ev.channel);
-
-                    ImGui::TableSetColumnIndex(5);
-                    ImGui::Text("0x%07" PRIXPTR, ev.caller_va);
-
-                    ImGui::TableSetColumnIndex(6);
-                    if (ev.kind == net::NetEventKind::RawPacket) {
-                        const std::string summary = net::NetworkCatalogAndObserver::DissectPacketPayload(
-                            static_cast<uint8_t>(ev.id),
-                            ev.preview_bytes.data(),
-                            ev.captured_len,
-                            ev.total_bits);
-                        ImGui::TextUnformatted(summary.c_str());
-                    } else {
-                        const auto* rinfo = net::NetworkCatalogAndObserver::FindRpcInfo(ev.id);
-                        ImGui::Text("%s", rinfo ? rinfo->confidence_note : "Не из статической таблицы");
-                    }
-
-                    ImGui::PopID();
-                }
-                ImGui::EndTable();
-            }
-
-            if (ImGui::BeginChild("##NetHexPreview", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Border)) {
-                if (selected_ev) {
-                    ImGui::TextColored(ImVec4(0.32f, 0.86f, 0.98f, 1.0f),
-                                       "Кадр #%llu | %s ID=%d | %d Б (%d бит) | Caller VA: 0x%" PRIXPTR,
-                                       static_cast<unsigned long long>(selected_ev->seq_no),
-                                       selected_ev->kind == net::NetEventKind::RawPacket ? "Raw Packet" : "RPC",
-                                       selected_ev->id,
-                                       selected_ev->total_bytes,
-                                       selected_ev->total_bits,
-                                       selected_ev->caller_va);
-                    char line[128]{};
-                    for (size_t off = 0; off < selected_ev->captured_len; off += 16) {
-                        size_t p = static_cast<size_t>(
-                            std::snprintf(line, sizeof(line), "+%02zX: ", off));
-                        for (size_t b = 0; b < 16 && (off + b) < selected_ev->captured_len; ++b) {
-                            p += static_cast<size_t>(
-                                std::snprintf(line + p, sizeof(line) - p, "%02X ",
-                                              selected_ev->preview_bytes[off + b]));
-                        }
-                        ImGui::TextUnformatted(line);
-                    }
-                } else {
-                    ImGui::TextDisabled("Выберите строку в таблице выше для просмотра Hex-дампа первых 96 байт BitStream.");
-                }
-                ImGui::EndChild();
-            }
-
-            ImGui::EndTabItem();
-        }
-
-        ImGui::EndTabBar();
-    }
-}
-
-void InspectorMenu::RenderTabMemoryAndVaMap(const InternalImGuiRuntimeTable& rt_table) {
-    const uintptr_t base = rt_table.module_base;
-
-    // Быстрые закладки на подтверждённые структуры и функции
-    ImGui::TextColored(ImVec4(0.32f, 0.86f, 0.98f, 1.0f), "Быстрые закладки 16.111.19050:");
-    if (base != 0) {
-        if (ImGui::SmallButton("ELF Header (+0x0)")) JumpToMemoryAddress(base, "ELF Header & Build-ID");
-        ImGui::SameLine();
-        if (rt_table.p_gimgui && *rt_table.p_gimgui) {
-            if (ImGui::SmallButton("GImGui Context")) {
-                JumpToMemoryAddress(reinterpret_cast<uintptr_t>(*rt_table.p_gimgui), "ImGuiContext (0x62B8)");
-            }
-            ImGui::SameLine();
-        }
-        if (snapshot_.player_pool_ptr != 0) {
-            if (ImGui::SmallButton("CPlayerPool")) JumpToMemoryAddress(snapshot_.player_pool_ptr, "CPlayerPool");
-            ImGui::SameLine();
-        }
-        if (snapshot_.local_player.local_player_ptr != 0) {
-            if (ImGui::SmallButton("CLocalPlayer")) {
-                JumpToMemoryAddress(snapshot_.local_player.local_player_ptr, "CLocalPlayer");
-            }
-            ImGui::SameLine();
-        }
-        if (snapshot_.local_player.ped_ptr != 0) {
-            if (ImGui::SmallButton("Local CPed")) {
-                JumpToMemoryAddress(snapshot_.local_player.ped_ptr, "Local CPed");
-            }
-            ImGui::SameLine();
-        }
-        if (snapshot_.vehicle_pool_ptr != 0) {
-            if (ImGui::SmallButton("CVehiclePool")) {
-                JumpToMemoryAddress(snapshot_.vehicle_pool_ptr, "CVehiclePool");
-            }
-        }
-    }
-
-    ImGui::SetNextItemWidth(220.0f);
-    if (ImGui::InputText("Адрес (hex)", mem_addr_input_, sizeof(mem_addr_input_),
-                         ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue)) {
-        mem_inspect_addr_ = static_cast<uintptr_t>(std::strtoull(mem_addr_input_, nullptr, 16));
-        std::snprintf(mem_inspect_label_, sizeof(mem_inspect_label_), "Ручной ввод");
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Перейти")) {
-        mem_inspect_addr_ = static_cast<uintptr_t>(std::strtoull(mem_addr_input_, nullptr, 16));
-    }
-    ImGui::SameLine();
-    if (ImGui::SmallButton("-0x100") && mem_inspect_addr_ >= 0x100) {
-        JumpToMemoryAddress(mem_inspect_addr_ - 0x100, mem_inspect_label_);
-    }
-    ImGui::SameLine();
-    if (ImGui::SmallButton("+0x100")) {
-        JumpToMemoryAddress(mem_inspect_addr_ + 0x100, mem_inspect_label_);
-    }
-    ImGui::SameLine();
-    ImGui::TextDisabled("Объект: %s", mem_inspect_label_);
-
-    const float hex_h = ImGui::GetContentRegionAvail().y * 0.54f;
-    if (ImGui::BeginChild("##SafeHexViewer", ImVec2(0.0f, hex_h), ImGuiChildFlags_Border)) {
-        if (mem_inspect_addr_ == 0) {
-            ImGui::TextDisabled("Выберите закладку выше или введите hex-адрес для безопасного Read-Only чтения.");
-        } else {
-            std::vector<uint8_t> buf(mem_inspect_bytes_, 0);
-            std::vector<uint8_t> ok_mask(mem_inspect_bytes_, 0);
-
-            for (size_t off = 0; off < mem_inspect_bytes_; off += 16) {
-                if (mem::SafeMemory::ReadBytes(mem_inspect_addr_ + off, &buf[off], 16)) {
-                    std::memset(&ok_mask[off], 1, 16);
-                } else {
-                    for (size_t b = 0; b < 16; ++b) {
-                        ok_mask[off + b] =
-                            mem::SafeMemory::ReadBytes(mem_inspect_addr_ + off + b, &buf[off + b], 1) ? 1 : 0;
-                    }
-                }
-            }
-
-            // Инспектор значений по выбранному смещению
-            if (mem_selected_offset_ + 8 <= buf.size() && ok_mask[mem_selected_offset_]) {
-                uint16_t u16_v = 0;
-                uint32_t u32_v = 0;
-                uint64_t u64_v = 0;
-                float    f32_v = 0.0f;
-                std::memcpy(&u16_v, &buf[mem_selected_offset_], 2);
-                std::memcpy(&u32_v, &buf[mem_selected_offset_], 4);
-                std::memcpy(&u64_v, &buf[mem_selected_offset_], 8);
-                std::memcpy(&f32_v, &buf[mem_selected_offset_], 4);
-
-                ImGui::TextColored(ImVec4(0.40f, 0.92f, 0.65f, 1.0f),
-                                   "[+0x%03zX] u8=%u | u16=%u (0x%04X) | u32=0x%08X | f32=%.5g | ptr=0x%012" PRIX64,
-                                   mem_selected_offset_,
-                                   buf[mem_selected_offset_],
-                                   u16_v, u16_v, u32_v, f32_v, u64_v);
-                if (mem::SafeMemory::IsPlausibleAddress(static_cast<uintptr_t>(u64_v))) {
-                    ImGui::SameLine();
-                    if (ImGui::SmallButton("Перейти по ptr")) {
-                        JumpToMemoryAddress(static_cast<uintptr_t>(u64_v), "Разыменованный ptr");
-                    }
-                }
-                ImGui::Separator();
-            }
-
-            for (size_t row = 0; row < mem_inspect_bytes_; row += 16) {
-                ImGui::PushID(static_cast<int>(row));
-                ImGui::TextDisabled("+%03zX (0x%012" PRIXPTR "):", row, mem_inspect_addr_ + row);
-                ImGui::SameLine();
-
-                for (size_t b = 0; b < 16; ++b) {
-                    const size_t idx = row + b;
-                    char bstr[8]{};
-                    if (ok_mask[idx]) {
-                        std::snprintf(bstr, sizeof(bstr), "%02X", buf[idx]);
-                    } else {
-                        std::snprintf(bstr, sizeof(bstr), "??");
-                    }
-                    const bool sel = (mem_selected_offset_ == idx);
-                    if (ImGui::Selectable(bstr, sel, ImGuiSelectableFlags_None, ImVec2(22.0f, 0.0f))) {
-                        mem_selected_offset_ = idx;
-                    }
-                    ImGui::SameLine(0.0f, (b == 7) ? 10.0f : 3.0f);
-                }
-
-                char ascii[17]{};
-                for (size_t b = 0; b < 16; ++b) {
-                    const uint8_t c = buf[row + b];
-                    ascii[b] = (ok_mask[row + b] && c >= 0x20 && c < 0x7F) ? static_cast<char>(c) : '.';
-                }
-                ImGui::Text(" |%s|", ascii);
-                ImGui::PopID();
-            }
-        }
-        ImGui::EndChild();
-    }
-
-    // Справочник ключевых подтверждённых VA из анализа 16.111.19050
-    if (ImGui::BeginTable("##VaReferenceTable", 4,
-                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-                          ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Символ / Цепочка");
-        ImGui::TableSetupColumn("Runtime адрес");
-        ImGui::TableSetupColumn("VA в ELF");
-        ImGui::TableSetupColumn("Описание");
-        ImGui::TableHeadersRow();
-
-        DrawKeyValueAddrRow("JNILib::step (GLThread)", base + offsets::jni_bridge::kJni_JNILib_step, base,
-                            "Кадр рендера GLSurfaceView (точка отрисовки нашего ImGui)");
-        DrawKeyValueAddrRow("JNILib::multiTouchEvent", base + offsets::jni_bridge::kJni_JNILib_multiTouchEvent, base,
-                            "Точка приёма касаний экрана (action, count, x1, y1...)");
-        DrawKeyValueAddrRow("ImGuiWrapper::Init", base + offsets::imgui_va::kWrapper_Init, base,
-                            "DebugCheckVersion(1.90.9) + CreateContext + шрифты");
-        DrawKeyValueAddrRow("ImGuiWrapper::BeginFrame", base + offsets::imgui_va::kWrapper_BeginFrame, base,
-                            "ImGui_ImplOpenGL3_NewFrame + ImGui::NewFrame");
-        DrawKeyValueAddrRow("ImGuiWrapper::EndAndRender", base + offsets::imgui_va::kWrapper_EndFrameAndRender, base,
-                            "EndFrame + Render + ImGui_ImplOpenGL3_RenderDrawData");
-        DrawKeyValueAddrRow("ImGui::NewFrame", base + offsets::imgui_va::kNewFrame, base,
-                            "Ядро Dear ImGui 1.90.9 (19090)");
-        DrawKeyValueAddrRow("ImGui_ImplOpenGL3_RenderDrawData", base + offsets::imgui_va::kImplOpenGL3_RenderDrawData, base,
-                            "GLES3 рендер командных списков ImGui");
-        DrawKeyValueAddrRow("PlayerPool::GetRemotePlayer", base + offsets::player::kFnPlayerPoolGetRemote, base,
-                            "Проверка ID <= 1503, индексация base + 8 + id*8");
-        DrawKeyValueAddrRow("VehiclePool::FindByGameVeh", base + offsets::vehicle::kFnVehiclePoolFindByGameVeh, base,
-                            "Линейный обход 2000 слотов по 8 байт");
-        DrawKeyValueAddrRow("Sender Packet 30 (73B)", base + 0x0178EE04ULL, base,
-                            "0x178EE04 -> 0x17DB1EC -> Send 0x178F068");
-        DrawKeyValueAddrRow("Sender Packet 34 (66B)", base + 0x0178BDB0ULL, base,
-                            "0x178BDB0 -> 0x17DBAF0 -> Send 0x178C040 (VehicleSync)");
-        DrawKeyValueAddrRow("Sender Packet 38 (32B)", base + 0x0178E5B4ULL, base,
-                            "0x178E5B4 -> 0x17DC054 -> Send 0x178E844 (aimSync)");
-        DrawKeyValueAddrRow("RakClient::Send Thunk", base + offsets::raknet::kFnRakClientSendThunkVA, base,
-                            "vtable +0x38 (_ZThn1680_N9RakClient4Send...)");
-        DrawKeyValueAddrRow("RakClient::RPC Thunk", base + offsets::raknet::kFnRakClientRpcThunkVA, base,
-                            "vtable +0xB0 (_ZThn1680_N9RakClient3RPC...)");
-
-        ImGui::EndTable();
     }
 }
 

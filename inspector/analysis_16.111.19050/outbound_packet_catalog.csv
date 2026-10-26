@@ -1,0 +1,12 @@
+packet_id,hex,logical_size_bytes_including_id,send_va,serialized_layout_or_evidence,role_confidence
+27,0x1B,variable,0x1470300; 0x150C660; 0x156025C; 0x179C4F8,four branches; three use u16 subtypes 13/24/10; one writes length+bytes,custom string/request families; exact names unknown
+29,0x1D,41,0x17945F8,ID + 40-byte payload; invalid victim type check in surrounding code,victim/weapon-event related; exact protocol name unknown
+30,0x1E,73,0x178F068,"3*u16, 96b, 4*f32, 2*u16, 2*u8, 2*96b, u16, u32, 2*u8",LocalPlayer state/sync; field semantics partial
+31,0x1F,55,0x178C294,u16 + 96b + 4*f32 + 2*96b after 8-bit ID,LocalPlayer sync helper; semantic names partial
+32,0x20,68,0x178F828,"u16, u8, 5*96b, f32 after 8-bit ID",multivector/vehicle-related state; exact protocol name unknown
+33,0x21,27,0x178EAD4,ID + 26 bytes from a struct; cached state compared before sending,player/vehicle-related cached-state update; name unknown
+34,0x22,66,0x178C040,"4*u16, 4*f32, 2*96b, f32, 2*u16, 3*u8, 3*u16 after ID",LocalPlayer vehicle sync; trailer checks in caller
+35,0x23,variable,0x178D540,two u16=0xFFFF then changed slot records,"slot diff; likely inventory/weapon-slot data, not final label"
+37,0x25,19,0x178D058,ID + 18 bytes,rate limit >=101 ms; fields unknown
+38,0x26,32,0x178E844,ID + 31 bytes,LocalPlayer sync includes aim/weapon-state consistency check
+39,0x27,57,0x178C3F8,ID + 56 bytes,local transport/crane state branch; field names unknown

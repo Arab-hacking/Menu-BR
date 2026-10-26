@@ -60,6 +60,80 @@ void br_cxa_finalize_all(void)
     }
 }
 
+/* ---------------------------------------------------------------------------
+ * ctype-таблицы glibc-хедеров zig (build-compat): в хедерах zig isprint/c
+ * реализованы макросом (*__ctype_b_loc())[(int)c], а tolower/toupper —
+ * через __ctype_tolower_loc/__ctype_toupper_loc. bionic таких символов не
+ * экспортирует, поэтому даём корректную C-locale таблицу (384 ячейки:
+ * -128..255, индекс = c + 128).
+ *
+ * Биты (little-endian encoding glibc _ISbit):
+ *   upper=0x0100 lower=0x0200 alpha=0x0400 digit=0x0800 xdigit=0x1000
+ *   space=0x2000 print=0x4000 graph=0x8000 blank=0x01 cntrl=0x02
+ *   punct=0x04 alnum=0x08
+ * ------------------------------------------------------------------------- */
+static unsigned short br_ctype_b_table[384];
+static const unsigned short *br_ctype_b_loc_val = br_ctype_b_table;
+static int32_t br_ctype_tolower_table[384];
+static int32_t br_ctype_toupper_table[384];
+static const int32_t *br_ctype_tolower_loc_val = br_ctype_tolower_table;
+static const int32_t *br_ctype_toupper_loc_val = br_ctype_toupper_table;
+static volatile int br_ctype_ready = 0;
+
+static void br_ctype_fill(void)
+{
+    for (int i = 0; i < 384; ++i) {
+        int c = i - 128;
+        unsigned short f = 0;
+        if (c < 0) {
+            f = 0; /* отрицательные: пусто (EOF=-1 обрабатывает макрос сам) */
+        } else if ((c < 32) || (c == 127)) {
+            f = 0x02; /* cntrl: 0..8, 14..31, 127 (9..13 = space) */
+            if (c >= 9 && c <= 13) f = 0x2000; /* nl vt ff cr — whitespace */
+            if (c == 9) f |= 0x01;             /* tab — blank */
+        } else {
+            f = 0x4000; /* print: 32..126 */
+            if (c == 32) {
+                f |= 0x2000 | 0x01; /* space + blank */
+            } else if (c >= 'a' && c <= 'z') {
+                f |= 0x0200 | 0x0400 | 0x08; /* lower alpha alnum */
+                if (c <= 'f') f |= 0x1000;   /* xdigit */
+            } else if (c >= 'A' && c <= 'Z') {
+                f |= 0x0100 | 0x0400 | 0x08; /* upper alpha alnum */
+                if (c <= 'F') f |= 0x1000;   /* xdigit */
+            } else if (c >= '0' && c <= '9') {
+                f |= 0x0800 | 0x1000 | 0x08; /* digit xdigit alnum */
+            } else {
+                f |= 0x04; /* punct */
+            }
+        }
+        br_ctype_b_table[i] = f;
+
+        br_ctype_tolower_table[i] = c;
+        br_ctype_toupper_table[i] = c;
+        if (c >= 'A' && c <= 'Z') br_ctype_tolower_table[i] = c + 32;
+        if (c >= 'a' && c <= 'z') br_ctype_toupper_table[i] = c - 32;
+    }
+}
+
+const unsigned short int **__ctype_b_loc(void)
+{
+    if (!br_ctype_ready) { br_ctype_fill(); br_ctype_ready = 1; }
+    return &br_ctype_b_loc_val;
+}
+
+const int32_t **__ctype_tolower_loc(void)
+{
+    if (!br_ctype_ready) { br_ctype_fill(); br_ctype_ready = 1; }
+    return &br_ctype_tolower_loc_val;
+}
+
+const int32_t **__ctype_toupper_loc(void)
+{
+    if (!br_ctype_ready) { br_ctype_fill(); br_ctype_ready = 1; }
+    return &br_ctype_toupper_loc_val;
+}
+
 /* ---------- алиасы на мangled имена C++ runtime ---------- */
 void _Znwm(size_t sz) __attribute__((alias("br_new")));
 void _Znam(size_t sz) __attribute__((alias("br_new")));

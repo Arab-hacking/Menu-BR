@@ -1,0 +1,1192 @@
+[
+  {
+    "site": 14276000,
+    "ldr": 14275976,
+    "id": 413,
+    "func": 14275672,
+    "size": 492,
+    "prio": 2,
+    "reliability": 1,
+    "channel": 0
+  },
+  {
+    "site": 14463252,
+    "ldr": 14463228,
+    "id": 413,
+    "func": 14461536,
+    "size": 1916,
+    "prio": 1,
+    "reliability": 4,
+    "channel": 0
+  },
+  {
+    "site": 14669788,
+    "ldr": 14669764,
+    "id": 454,
+    "func": 14669584,
+    "size": 424,
+    "prio": 1,
+    "reliability": 3,
+    "channel": 0
+  },
+  {
+    "site": 14949244,
+    "ldr": 14949220,
+    "id": 413,
+    "func": 14945880,
+    "size": 5584,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 14971080,
+    "ldr": 14971056,
+    "id": 413,
+    "func": 14970916,
+    "size": 256,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 14997692,
+    "ldr": 14997668,
+    "id": 423,
+    "func": 14997316,
+    "size": 528,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 15108720,
+    "ldr": 15108696,
+    "id": 413,
+    "func": 15108568,
+    "size": 244,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 19981112,
+    "ldr": 19981088,
+    "id": 413,
+    "func": 19980828,
+    "size": 628,
+    "prio": 1,
+    "reliability": 4,
+    "channel": 0
+  },
+  {
+    "site": 20110976,
+    "ldr": 20110952,
+    "id": 413,
+    "func": 20110768,
+    "size": 296,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 20114072,
+    "ldr": 20114048,
+    "id": 413,
+    "func": 20113944,
+    "size": 256,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 20478244,
+    "ldr": 20478220,
+    "id": 413,
+    "func": 20475864,
+    "size": 3264,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 20483264,
+    "ldr": 20483240,
+    "id": 413,
+    "func": 20482936,
+    "size": 384,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 20491064,
+    "ldr": 20491040,
+    "id": 413,
+    "func": 20490940,
+    "size": 216,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 21027100,
+    "ldr": 21027076,
+    "id": 423,
+    "func": 21026892,
+    "size": 316,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24589256,
+    "ldr": 24589232,
+    "id": 413,
+    "func": 24589088,
+    "size": 260,
+    "prio": 2,
+    "reliability": 3,
+    "channel": 0
+  },
+  {
+    "site": 24589516,
+    "ldr": 24589492,
+    "id": 413,
+    "func": 24589348,
+    "size": 260,
+    "prio": 2,
+    "reliability": 3,
+    "channel": 0
+  },
+  {
+    "site": 24589780,
+    "ldr": 24589756,
+    "id": 413,
+    "func": 24589608,
+    "size": 264,
+    "prio": 2,
+    "reliability": 3,
+    "channel": 0
+  },
+  {
+    "site": 24603568,
+    "ldr": 24603544,
+    "id": 396,
+    "func": 24603456,
+    "size": 204,
+    "prio": 2,
+    "reliability": 3,
+    "channel": 0
+  },
+  {
+    "site": 24603804,
+    "ldr": 24603780,
+    "id": 396,
+    "func": 24603660,
+    "size": 232,
+    "prio": 2,
+    "reliability": 3,
+    "channel": 0
+  },
+  {
+    "site": 24688748,
+    "ldr": 24688724,
+    "id": 441,
+    "func": 24686948,
+    "size": 2520,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24692536,
+    "ldr": 24692512,
+    "id": 371,
+    "func": 24692176,
+    "size": 476,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24694304,
+    "ldr": 24694280,
+    "id": 314,
+    "func": 24692652,
+    "size": 2028,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24694440,
+    "ldr": 24694280,
+    "id": 357,
+    "func": 24692652,
+    "size": 2028,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24694440,
+    "ldr": 24694416,
+    "id": 357,
+    "func": 24692652,
+    "size": 2028,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24699884,
+    "ldr": 24699860,
+    "id": 413,
+    "func": 24696236,
+    "size": 4104,
+    "prio": 1,
+    "reliability": 4,
+    "channel": 0
+  },
+  {
+    "site": 24703792,
+    "ldr": 24699860,
+    "id": 382,
+    "func": 24696236,
+    "size": 4104,
+    "prio": 1,
+    "reliability": 4,
+    "channel": 0
+  },
+  {
+    "site": 24703792,
+    "ldr": 24703768,
+    "id": 382,
+    "func": 24703636,
+    "size": 244,
+    "prio": 1,
+    "reliability": 4,
+    "channel": 0
+  },
+  {
+    "site": 24704044,
+    "ldr": 24704020,
+    "id": 409,
+    "func": 24703880,
+    "size": 256,
+    "prio": 1,
+    "reliability": 4,
+    "channel": 0
+  },
+  {
+    "site": 24706308,
+    "ldr": 24706284,
+    "id": 356,
+    "func": 24706040,
+    "size": 368,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24706652,
+    "ldr": 24706628,
+    "id": 355,
+    "func": 24706408,
+    "size": 340,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24706960,
+    "ldr": 24706628,
+    "id": 413,
+    "func": 24706408,
+    "size": 340,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24706960,
+    "ldr": 24706936,
+    "id": 413,
+    "func": 24706748,
+    "size": 304,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24712068,
+    "ldr": 24712044,
+    "id": 413,
+    "func": 24711932,
+    "size": 224,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24725620,
+    "ldr": 24725596,
+    "id": 451,
+    "func": 24725124,
+    "size": 660,
+    "prio": 1,
+    "reliability": 4,
+    "channel": 0
+  },
+  {
+    "site": 24745092,
+    "ldr": 24745068,
+    "id": 69,
+    "func": 24744640,
+    "size": 1836,
+    "prio": 1,
+    "reliability": 3,
+    "channel": 0
+  },
+  {
+    "site": 24745480,
+    "ldr": 24745068,
+    "id": 67,
+    "func": 24744640,
+    "size": 1836,
+    "prio": 1,
+    "reliability": 3,
+    "channel": 0
+  },
+  {
+    "site": 24745480,
+    "ldr": 24745456,
+    "id": 67,
+    "func": 24744640,
+    "size": 1836,
+    "prio": 1,
+    "reliability": 3,
+    "channel": 0
+  },
+  {
+    "site": 24758792,
+    "ldr": 24758768,
+    "id": 374,
+    "func": 24758680,
+    "size": 204,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24759732,
+    "ldr": 24759708,
+    "id": 378,
+    "func": 24759584,
+    "size": 236,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24759968,
+    "ldr": 24759944,
+    "id": 414,
+    "func": 24759820,
+    "size": 236,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24760204,
+    "ldr": 24760180,
+    "id": 413,
+    "func": 24760056,
+    "size": 236,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24760440,
+    "ldr": 24760416,
+    "id": 413,
+    "func": 24760292,
+    "size": 236,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24760676,
+    "ldr": 24760652,
+    "id": 413,
+    "func": 24760528,
+    "size": 236,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24760932,
+    "ldr": 24760908,
+    "id": 413,
+    "func": 24760764,
+    "size": 256,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24761188,
+    "ldr": 24761164,
+    "id": 413,
+    "func": 24761020,
+    "size": 256,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24761444,
+    "ldr": 24761420,
+    "id": 413,
+    "func": 24761276,
+    "size": 256,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24761700,
+    "ldr": 24761676,
+    "id": 413,
+    "func": 24761532,
+    "size": 256,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24834860,
+    "ldr": 24834836,
+    "id": 324,
+    "func": 24834712,
+    "size": 236,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24837732,
+    "ldr": 24837708,
+    "id": 436,
+    "func": 24837552,
+    "size": 332,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24854720,
+    "ldr": 24854696,
+    "id": 361,
+    "func": 24853456,
+    "size": 1388,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 24893232,
+    "ldr": 24893208,
+    "id": 320,
+    "func": 24892280,
+    "size": 1072,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 25180576,
+    "ldr": 25180552,
+    "id": 367,
+    "func": 25180260,
+    "size": 580,
+    "prio": 1,
+    "reliability": 3,
+    "channel": 0
+  },
+  {
+    "site": 25917760,
+    "ldr": 25917732,
+    "id": 437,
+    "func": 25917516,
+    "size": 488,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26009392,
+    "ldr": 26009368,
+    "id": 413,
+    "func": 26009112,
+    "size": 372,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26016588,
+    "ldr": 26016564,
+    "id": 413,
+    "func": 26016312,
+    "size": 368,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26365496,
+    "ldr": 26365472,
+    "id": 413,
+    "func": 26365096,
+    "size": 528,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26369556,
+    "ldr": 26369532,
+    "id": 413,
+    "func": 26369344,
+    "size": 308,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26369788,
+    "ldr": 26369532,
+    "id": 413,
+    "func": 26369344,
+    "size": 308,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26369788,
+    "ldr": 26369764,
+    "id": 413,
+    "func": 26369652,
+    "size": 564,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26380756,
+    "ldr": 26380732,
+    "id": 413,
+    "func": 26379728,
+    "size": 1196,
+    "prio": 1,
+    "reliability": 4,
+    "channel": 0
+  },
+  {
+    "site": 26432316,
+    "ldr": 26432292,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432448,
+    "ldr": 26432292,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432552,
+    "ldr": 26432292,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432656,
+    "ldr": 26432292,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432784,
+    "ldr": 26432292,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432916,
+    "ldr": 26432292,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433112,
+    "ldr": 26432292,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433392,
+    "ldr": 26432292,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433496,
+    "ldr": 26432292,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433764,
+    "ldr": 26432292,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432448,
+    "ldr": 26432424,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432552,
+    "ldr": 26432424,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432656,
+    "ldr": 26432424,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432784,
+    "ldr": 26432424,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432916,
+    "ldr": 26432424,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433112,
+    "ldr": 26432424,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433392,
+    "ldr": 26432424,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433496,
+    "ldr": 26432424,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433764,
+    "ldr": 26432424,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432552,
+    "ldr": 26432528,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432656,
+    "ldr": 26432528,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432784,
+    "ldr": 26432528,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432916,
+    "ldr": 26432528,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433112,
+    "ldr": 26432528,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433392,
+    "ldr": 26432528,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433496,
+    "ldr": 26432528,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433764,
+    "ldr": 26432528,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432656,
+    "ldr": 26432632,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432784,
+    "ldr": 26432632,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432916,
+    "ldr": 26432632,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433112,
+    "ldr": 26432632,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433392,
+    "ldr": 26432632,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433496,
+    "ldr": 26432632,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433764,
+    "ldr": 26432632,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432784,
+    "ldr": 26432760,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432916,
+    "ldr": 26432760,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433112,
+    "ldr": 26432760,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433392,
+    "ldr": 26432760,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433496,
+    "ldr": 26432760,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433764,
+    "ldr": 26432760,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26432916,
+    "ldr": 26432892,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433112,
+    "ldr": 26432892,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433392,
+    "ldr": 26432892,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433496,
+    "ldr": 26432892,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433764,
+    "ldr": 26432892,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433112,
+    "ldr": 26433088,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433392,
+    "ldr": 26433088,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433496,
+    "ldr": 26433088,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433764,
+    "ldr": 26433088,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433392,
+    "ldr": 26433368,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433496,
+    "ldr": 26433368,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433764,
+    "ldr": 26433368,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433496,
+    "ldr": 26433472,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433764,
+    "ldr": 26433472,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26433764,
+    "ldr": 26433740,
+    "id": 413,
+    "func": 26432048,
+    "size": 2136,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26471808,
+    "ldr": 26471784,
+    "id": 413,
+    "func": 26471396,
+    "size": 544,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26537920,
+    "ldr": 26537896,
+    "id": 403,
+    "func": 26537592,
+    "size": 388,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26799088,
+    "ldr": 26799064,
+    "id": 413,
+    "func": 26798828,
+    "size": 864,
+    "prio": 2,
+    "reliability": 2,
+    "channel": 0
+  },
+  {
+    "site": 26861068,
+    "ldr": 26861044,
+    "id": 342,
+    "func": 26860692,
+    "size": 472,
+    "prio": 1,
+    "reliability": 2,
+    "channel": 0
+  }
+]
