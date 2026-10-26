@@ -224,6 +224,48 @@ void QuerySurfaceDimensions(EGLDisplay dpy, EGLSurface surf, int& out_w, int& ou
     }
 }
 
+// ===== TEMP DIAG (временная диагностика — удалить когда починим) =====
+static void BrDiagGlFirstFrame() {
+    const char* gl_ver  = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+    const char* gl_vnd  = reinterpret_cast<const char*>(glGetString(GL_VENDOR));
+    const char* gl_rnd  = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+    BR_BRIDGE_LOGI("DIAG: GL=%s | Vendor=%s | Renderer=%s",
+                   gl_ver ? gl_ver : "?", gl_vnd ? gl_vnd : "?", gl_rnd ? gl_rnd : "?");
+
+    // Контрольный тест: компилирует/линкует ли этот контекст ES3-шейдер
+    const char* vs = "#version 300 es\nlayout(location=0) in vec4 P; void main(){ gl_Position = P; }";
+    const char* fs = "#version 300 es\nlayout(location=0) out vec4 C; void main(){ C = vec4(1.0); }";
+    char logbuf[512] = {};
+    GLuint v = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(v, 1, &vs, nullptr);
+    glCompileShader(v);
+    GLint ok = 0; glGetShaderiv(v, GL_COMPILE_STATUS, &ok);
+    if (!ok) glGetShaderInfoLog(v, sizeof(logbuf), nullptr, logbuf);
+    BR_BRIDGE_LOGI("DIAG: контроль vertex compile=%d %s", ok, ok ? "" : logbuf);
+    GLuint f = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(f, 1, &fs, nullptr);
+    glCompileShader(f);
+    GLint fok = 0; glGetShaderiv(f, GL_COMPILE_STATUS, &fok);
+    logbuf[0] = 0;
+    if (!fok) glGetShaderInfoLog(f, sizeof(logbuf), nullptr, logbuf);
+    BR_BRIDGE_LOGI("DIAG: контроль fragment compile=%d %s", fok, fok ? "" : logbuf);
+    GLuint p = glCreateProgram();
+    glAttachShader(p, v);
+    glAttachShader(p, f);
+    glLinkProgram(p);
+    GLint lok = 0; glGetProgramiv(p, GL_LINK_STATUS, &lok);
+    logbuf[0] = 0;
+    if (!lok) glGetProgramInfoLog(p, sizeof(logbuf), nullptr, logbuf);
+    BR_BRIDGE_LOGI("DIAG: контроль program link=%d %s", lok, lok ? "" : logbuf);
+    glDetachShader(p, v); glDetachShader(p, f);
+    glDeleteShader(v); glDeleteShader(f); glDeleteProgram(p);
+
+    GLint fbo = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
+    BR_BRIDGE_LOGI("DIAG: текущий FBO=%d (0 = окно EGL, !=0 = свой FBO игры — тогда наш оверлей на FBO 0 будет невидим)", fbo);
+}
+// ===== /TEMP DIAG =====
+
 void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_surf) {
     if (!g_attached.load(std::memory_order_acquire) || !g_render_cb) {
         return;
@@ -279,6 +321,7 @@ void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_sur
         g_last_egl_ctx = cur_egl_ctx;
         BR_BRIDGE_LOGI("Собственный контекст Dear ImGui 1.90.9 инициализирован! Контекст=%p, Экран=%dx%d",
                        static_cast<void*>(g_own_ctx), surf_w, surf_h);
+        BrDiagGlFirstFrame(); // TEMP DIAG
     } else {
         ImGui::SetCurrentContext(g_own_ctx);
         if (cur_egl_ctx != g_last_egl_ctx) {
@@ -371,6 +414,22 @@ void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_sur
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+    // TEMP DIAG: доказываем, что кадры идут и drawdata не пустой
+    {
+        ImDrawData* dd0 = ImGui::GetDrawData();
+        static int s_diag_logged = 0;
+        if (s_diag_logged < 3 || (g_rt_table.rendered_frames_total % 60) == 0) {
+            BR_BRIDGE_LOGI("DIAG: кадр=%llu DrawData: CmdLists=%d Vtx=%d Idx=%d | gl_err=0x%X",
+                           (unsigned long long)g_rt_table.rendered_frames_total,
+                           dd0 ? dd0->CmdListsCount : -1,
+                           dd0 ? dd0->TotalVtxCount : -1,
+                           dd0 ? dd0->TotalIdxCount : -1,
+                           (unsigned)glGetError());
+            if (s_diag_logged < 3) ++s_diag_logged;
+        }
+    }
+    // ===== /TEMP DIAG =====
 
     // Восстанавливаем исходные буферы кадра и маски игры
     glColorMask(prev_color_mask[0], prev_color_mask[1], prev_color_mask[2], prev_color_mask[3]);
