@@ -82,12 +82,6 @@ using FnJniStep = void (*)(void* env, void* thiz);
 using FnEglSwapBuffers = EGLBoolean (*)(EGLDisplay dpy, EGLSurface surf);
 FnEglSwapBuffers g_orig_egl_swap = nullptr;
 FnEglSwapBuffers g_orig_egl_swap_drv = nullptr; // драйверский eglSwapBuffers (через eglGetProcAddress)
-
-using FnEglMakeCurrent = EGLBoolean (*)(EGLDisplay, EGLSurface, EGLSurface, EGLContext);
-FnEglMakeCurrent g_orig_egl_make_current = nullptr;
-
-using FnEglCreateWindowSurface = EGLSurface (*)(EGLDisplay, EGLConfig, void*, const EGLint*);
-FnEglCreateWindowSurface g_orig_egl_create_window_surface = nullptr;
 #endif
 
 // Точная 10-аргументная AAPCS64-сигнатура Java_com_blackhub_bronline_game_core_JNILib_multiTouchEvent
@@ -231,80 +225,12 @@ void QuerySurfaceDimensions(EGLDisplay dpy, EGLSurface surf, int& out_w, int& ou
     }
 }
 
-// ===== TEMP DIAG v2 (временная диагностика — удалить когда починим) =====
-static int g_diag_probe_glx = 0; // центр нашего окна (GL-координаты) для пиксель-пробы
-static int g_diag_probe_gly = 0;
+// TEMP DIAG (объявления; определения ниже в блоке #if defined(__ANDROID__))
+void BrDiagControlShader();
+void BrDiagDrawTestQuad(int w, int h);
 
-static void BrDrainGlErrors(const char* tag) {
-    int first = 0, n = 0;
-    for (int i = 0; i < 16; ++i) {
-        const int e = static_cast<int>(glGetError());
-        if (e == 0) break;
-        if (n == 0) first = e;
-        ++n;
-    }
-    if (n > 0) {
-        BR_BRIDGE_LOGI("DIAG: GL-ошибки [%s]: %d шт, первая 0x%03X", tag, n, static_cast<unsigned>(first));
-    }
-}
-
-static void BrDiagProbePixel(const char* tag, int glx, int gly) {
-    uint8_t px[4 * 4 * 4] = {0};
-    glReadPixels(glx, gly, 4, 4, GL_RGBA, GL_UNSIGNED_BYTE, px);
-    BR_BRIDGE_LOGI("DIAG: pixel[%s] @gl(%d,%d) = R%02X G%02X B%02X A%02X (центр 4x4)",
-                   tag, glx, gly, px[0], px[1], px[2], px[3]);
-}
-
-static void BrDiagGlFirstFrame() {
-    const char* gl_ver  = reinterpret_cast<const char*>(glGetString(GL_VERSION));
-    const char* gl_vnd  = reinterpret_cast<const char*>(glGetString(GL_VENDOR));
-    const char* gl_rnd  = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
-    BR_BRIDGE_LOGI("DIAG: GL=%s | Vendor=%s | Renderer=%s",
-                   gl_ver ? gl_ver : "?", gl_vnd ? gl_vnd : "?", gl_rnd ? gl_rnd : "?");
-
-    // Контроль: ES3-шейдер (fragment С precision — как у imgui)
-    const char* vs = "#version 300 es\nlayout(location=0) in vec4 P; void main(){ gl_Position = P; }";
-    const char* fs = "#version 300 es\nprecision mediump float;\nlayout(location=0) out vec4 C; void main(){ C = vec4(1.0); }";
-    char logbuf[512] = {};
-    GLuint v = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(v, 1, &vs, nullptr);
-    glCompileShader(v);
-    GLint ok = 0; glGetShaderiv(v, GL_COMPILE_STATUS, &ok);
-    if (!ok) glGetShaderInfoLog(v, sizeof(logbuf), nullptr, logbuf);
-    BR_BRIDGE_LOGI("DIAG: контроль vertex compile=%d %s", ok, ok ? "" : logbuf);
-    GLuint f = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(f, 1, &fs, nullptr);
-    glCompileShader(f);
-    GLint fok = 0; glGetShaderiv(f, GL_COMPILE_STATUS, &fok);
-    logbuf[0] = 0;
-    if (!fok) glGetShaderInfoLog(f, sizeof(logbuf), nullptr, logbuf);
-    BR_BRIDGE_LOGI("DIAG: контроль fragment(precision) compile=%d %s", fok, fok ? "" : logbuf);
-    GLuint p = glCreateProgram();
-    glAttachShader(p, v);
-    glAttachShader(p, f);
-    glLinkProgram(p);
-    GLint lok = 0; glGetProgramiv(p, GL_LINK_STATUS, &lok);
-    logbuf[0] = 0;
-    if (!lok) glGetProgramInfoLog(p, sizeof(logbuf), nullptr, logbuf);
-    BR_BRIDGE_LOGI("DIAG: контроль program link=%d %s", lok, lok ? "" : logbuf);
-    glDetachShader(p, v); glDetachShader(p, f);
-    glDeleteShader(v); glDeleteShader(f); glDeleteProgram(p);
-
-    GLint fbo = 0;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
-    BR_BRIDGE_LOGI("DIAG: текущий FBO=%d (0 = окно EGL, !=0 = свой FBO игры)", fbo);
-}
-// ===== /TEMP DIAG v2 =====
-
-void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_surf) {
+void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_surf, const char* src_tag) {
     if (!g_attached.load(std::memory_order_acquire) || !g_render_cb) {
-        return;
-    }
-
-    // Контекст без поверхности (headless, например JNILib_step) — рендер
-    // бессмыслен: идёт в несуществующий default FBO (GL-ошибки 0x500/0x502).
-    if (explicit_surf == EGL_NO_SURFACE &&
-        eglGetCurrentSurface(EGL_DRAW) == EGL_NO_SURFACE) {
         return;
     }
 
@@ -358,7 +284,7 @@ void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_sur
         g_last_egl_ctx = cur_egl_ctx;
         BR_BRIDGE_LOGI("Собственный контекст Dear ImGui 1.90.9 инициализирован! Контекст=%p, Экран=%dx%d",
                        static_cast<void*>(g_own_ctx), surf_w, surf_h);
-        BrDiagGlFirstFrame(); // TEMP DIAG
+        BrDiagControlShader(); // TEMP DIAG: контроль шейдеров ImGui в этом контексте
     } else {
         ImGui::SetCurrentContext(g_own_ctx);
         if (cur_egl_ctx != g_last_egl_ctx) {
@@ -416,14 +342,7 @@ void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_sur
     glGetBooleanv(GL_COLOR_WRITEMASK, prev_color_mask);
     glGetBooleanv(GL_DEPTH_WRITEMASK, &prev_depth_mask);
 
-    // TEMP DIAG v2: ошибки игры (до нас) + пиксель "до" нашего рендера
-    BrDrainGlErrors("игра, до нашего рендера");
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    {
-        int glx = 600, gly = surf_h - 400;
-        if (g_diag_probe_glx > 0) { glx = g_diag_probe_glx; gly = g_diag_probe_gly; }
-        BrDiagProbePixel("до", glx, gly);
-    }
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
     ImGui_ImplOpenGL3_NewFrame();
@@ -459,75 +378,24 @@ void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_sur
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-    // TEMP DIAG v3: пиксель "после" в центре ГЛАВНОГО окна + наши GL-ошибки + GL-состояние (1-й кадр)
-    {
-        int glx = 600, gly = surf_h - 400;
-        if (g_own_ctx && g_own_ctx->Windows.Size > 0) {
-            for (int i = 0; i < g_own_ctx->Windows.Size; ++i) {
-                ImGuiWindow* w = g_own_ctx->Windows[i];
-                if (!w || !w->WasActive || w->Hidden) continue;
-                const bool is_main = std::strstr(w->Name, "BRInspectorMain") != nullptr;
-                if (is_main || (g_diag_probe_glx == 0)) {
-                    const int cx = static_cast<int>(w->Pos.x + w->Size.x * 0.5f);
-                    const int cy = static_cast<int>(w->Pos.y + w->Size.y * 0.5f);
-                    if (cx > 4 && cy > 4 && cx < surf_w - 4 && cy < surf_h - 4) {
-                        glx = cx; gly = surf_h - cy;
-                        g_diag_probe_glx = cx; g_diag_probe_gly = surf_h - cy;
-                        if (is_main) {
-                            static bool s_name_logged = false;
-                            if (!s_name_logged) {
-                                s_name_logged = true;
-                                BR_BRIDGE_LOGI("DIAG: главное окно: pos=(%.0f,%.0f) size=(%.0f,%.0f) name='%s'",
-                                               w->Pos.x, w->Pos.y, w->Size.x, w->Size.y, w->Name);
-                            }
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-        BrDiagProbePixel("после", glx, gly);
-        BrDrainGlErrors("наши, после RenderDrawData");
-
-        if (g_rt_table.rendered_frames_total == 1) {
-            GLint vao = 0, vbo = 0, ebo = 0, tex = 0, prog = 0;
-            GLint vbo_sz = 0, ebo_sz = 0, tex_w = 0, tex_h = 0, a0 = 0, link = 0;
-            glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
-            glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &vbo);
-            glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &ebo);
-            glGetIntegerv(GL_TEXTURE_BINDING_2D, &tex);
-            glGetIntegerv(GL_CURRENT_PROGRAM, &prog);
-            if (vbo != 0) glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &vbo_sz);
-            if (ebo != 0) glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &ebo_sz);
-            if (tex != 0) {
-                glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tex_w);
-                glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &tex_h);
-            }
-            glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &a0);
-            if (prog != 0) glGetProgramiv(static_cast<GLuint>(prog), GL_LINK_STATUS, &link);
-            BR_BRIDGE_LOGI("DIAG: GL-состояние после 1-го кадра: VAO=%d VBO=%d(sz=%d) EBO=%d(sz=%d) TEX=%d(%dx%d) Program=%d(link=%d) attrib0_en=%d",
-                           vao, vbo, vbo_sz, ebo, ebo_sz, tex, tex_w, tex_h, prog, link, a0);
-        }
-
-        ImDrawData* dd0 = ImGui::GetDrawData();
-        static int s_diag_logged = 0;
-        if (s_diag_logged < 3 || (g_rt_table.rendered_frames_total % 60) == 0) {
-            BR_BRIDGE_LOGI("DIAG: кадр=%llu ctx=%p surf=%p DrawData: CmdLists=%d Vtx=%d Idx=%d",
-                           (unsigned long long)g_rt_table.rendered_frames_total,
-                           eglGetCurrentContext(),
-                           eglGetCurrentSurface(EGL_DRAW),
-                           dd0 ? dd0->CmdListsCount : -1,
-                           dd0 ? dd0->TotalVtxCount : -1,
-                           dd0 ? dd0->TotalIdxCount : -1);
-            if (s_diag_logged < 3) ++s_diag_logged;
-        }
-    }
-    // ===== /TEMP DIAG v3 =====
+    BrDiagDrawTestQuad(surf_w, surf_h); // TEMP DIAG (пока FBO 0 привязан)
 
     // Восстанавливаем исходные буферы кадра и маски игры
     glColorMask(prev_color_mask[0], prev_color_mask[1], prev_color_mask[2], prev_color_mask[3]);
     glDepthMask(prev_depth_mask);
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(prev_fbo));
+
+    // TEMP DIAG: в каком EGL-контексте/поверхности рисуем (step vs swap)
+    {
+        static int s_diag_frames = 0;
+        ++s_diag_frames;
+        if (s_diag_frames <= 3 || (s_diag_frames % 300) == 0) {
+            BR_BRIDGE_LOGI("DIAG: кадр=%d src=%s ctx=%p surf=%p",
+                           s_diag_frames, src_tag ? src_tag : "?",
+                           static_cast<void*>(cur_egl_ctx),
+                           static_cast<void*>(surf));
+        }
+    }
 
     ImGui::SetCurrentContext(prev_imgui_ctx);
     s_in_render = false;
@@ -537,45 +405,203 @@ void Hooked_JNILib_step(void* env, void* thiz) {
     if (g_orig_jnilib_step) {
         g_orig_jnilib_step(env, thiz);
     }
-    RenderStandaloneImGuiFrame(EGL_NO_DISPLAY, EGL_NO_SURFACE);
+    RenderStandaloneImGuiFrame(EGL_NO_DISPLAY, EGL_NO_SURFACE, "step");
 }
 
 EGLBoolean Hooked_eglSwapBuffers(EGLDisplay dpy, EGLSurface surf) {
-    RenderStandaloneImGuiFrame(dpy, surf);
+    RenderStandaloneImGuiFrame(dpy, surf, "swap-libEGL");
     return g_orig_egl_swap ? g_orig_egl_swap(dpy, surf) : EGL_FALSE;
 }
 
-// Драйверский eglSwapBuffers (игра может звать его через eglGetProcAddress,
-// минуя экспорт libEGL.so — тогда наш первый хук не срабатывает)
+// Драйверский eglSwapBuffers: игра/Noesis часто берут swap через
+// eglGetProcAddress — это ДРУГАЯ функция (обход экспорта libEGL.so),
+// и хук на экспорт не срабатывает.
 EGLBoolean Hooked_eglSwapBuffersDrv(EGLDisplay dpy, EGLSurface surf) {
-    RenderStandaloneImGuiFrame(dpy, surf);
+    RenderStandaloneImGuiFrame(dpy, surf, "swap-drv");
     return g_orig_egl_swap_drv ? g_orig_egl_swap_drv(dpy, surf) : EGL_FALSE;
 }
 
-// ===== TEMP DIAG v4: карта контекстов/поверхностей =====
-EGLBoolean Hooked_eglMakeCurrent(EGLDisplay dpy, EGLSurface draw,
-                                 EGLSurface read, EGLContext ctx) {
-    static int cnt = 0;
-    const int n = cnt++;
-    if ((n < 12 || (n % 600) == 0) && (draw || read) && ctx) {
-        BR_BRIDGE_LOGI("DIAG: makeCurrent[%d]: dpy=%p draw=%p read=%p ctx=%p",
-                       n, dpy, draw, read, ctx);
+// ============================================================================
+// TEMP DIAG (временная диагностика "нет меню"):
+//  1) BrDiagControlShader — компилируем/линкуем ТОЧНО те же GLSL-строки,
+//     что использует ImGui_ImplOpenGL3 (ES 3.0), и логируем статус + info log.
+//     Если здесь ок, а меню не видно — проблема не в шейдере ImGui.
+//  2) BrDiagDrawTestQuad — после RenderDrawData рисуем яркий пурпурный
+//     квадрат 120x120 в правом нижнем углу своим простым шейдером.
+//     ВИДИМ квадрат -> GL-контекст презентуется на экран, проблема в
+//     рендер-пути ImGui. НЕ ВИДИМ -> контекст JNILib_step не презентуется.
+// ============================================================================
+
+// Точные GLSL-строки из imgui_impl_opengl3.cpp (вариант glsl 300 es)
+static const char* kCtrlVertexGlsl300es =
+    "uniform mat4 ProjMtx;\n"
+    "layout (location = 0) in vec2 Position;\n"
+    "layout (location = 1) in vec2 UV;\n"
+    "layout (location = 2) in vec4 Color;\n"
+    "out vec2 Frag_UV;\n"
+    "out vec4 Frag_Color;\n"
+    "void main()\n"
+    "{\n"
+    "    Frag_UV = UV;\n"
+    "    Frag_Color = Color;\n"
+    "    gl_Position = ProjMtx * vec4(Position.xy,0,1);\n"
+    "}\n";
+
+static const char* kCtrlFragmentGlsl300es =
+    "precision mediump float;\n"
+    "uniform sampler2D Texture;\n"
+    "in vec2 Frag_UV;\n"
+    "in vec4 Frag_Color;\n"
+    "layout (location = 0) out vec4 Out_Color;\n"
+    "void main()\n"
+    "{\n"
+    "    Out_Color = Frag_Color * texture(Texture, Frag_UV.st);\n"
+    "}\n";
+
+static GLuint BrDiagCompileShader(GLenum type, const char* src, const char* tag) {
+    GLuint sh = glCreateShader(type);
+    const GLchar* parts[2] = {"#version 300 es\n", src};
+    glShaderSource(sh, 2, parts, nullptr);
+    glCompileShader(sh);
+    GLint ok = 0;
+    glGetShaderiv(sh, GL_COMPILE_STATUS, &ok);
+    if (!ok) {
+        char log[1024] = {0};
+        glGetShaderInfoLog(sh, sizeof(log), nullptr, log);
+        BR_BRIDGE_LOGE("DIAG: контроль %s: compile=0, log: %s", tag, log);
+    } else {
+        BR_BRIDGE_LOGI("DIAG: контроль %s: compile=1", tag);
     }
-    return g_orig_egl_make_current
-               ? g_orig_egl_make_current(dpy, draw, read, ctx)
-               : EGL_FALSE;
+    return sh;
 }
 
-EGLSurface Hooked_eglCreateWindowSurface(EGLDisplay dpy, EGLConfig cfg,
-                                         void* win, const EGLint* attrs) {
-    (void)attrs;
-    EGLSurface s = g_orig_egl_create_window_surface
-                       ? g_orig_egl_create_window_surface(dpy, cfg, win, attrs)
-                       : EGL_NO_SURFACE;
-    BR_BRIDGE_LOGI("DIAG: createWindowSurface: dpy=%p win=%p -> surf=%p", dpy, win, s);
-    return s;
+void BrDiagControlShader() {
+    static bool s_done = false;
+    if (s_done) {
+        return;
+    }
+    s_done = true;
+
+    const GLuint vs = BrDiagCompileShader(GL_VERTEX_SHADER, kCtrlVertexGlsl300es, "vertex (=imgui)");
+    const GLuint fs = BrDiagCompileShader(GL_FRAGMENT_SHADER, kCtrlFragmentGlsl300es, "fragment (=imgui)");
+    const GLuint prg = glCreateProgram();
+    glAttachShader(prg, vs);
+    glAttachShader(prg, fs);
+    glLinkProgram(prg);
+    GLint ok = 0;
+    glGetProgramiv(prg, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[1024] = {0};
+        glGetProgramInfoLog(prg, sizeof(log), nullptr, log);
+        BR_BRIDGE_LOGE("DIAG: контроль program: link=0, log: %s", log);
+    } else {
+        BR_BRIDGE_LOGI("DIAG: контроль program: link=1 (шейдеры ImGui-совместимы с этим драйвером)");
+    }
+    glDeleteProgram(prg);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
 }
-// ===== /TEMP DIAG v4 =====
+
+struct BrDiagTestQuadState {
+    GLuint     prog = 0;
+    GLuint     vao  = 0;
+    GLuint     vbo  = 0;
+    EGLContext ctx  = EGL_NO_CONTEXT;
+    int        drawn_frames = 0;
+};
+static BrDiagTestQuadState g_tq{};
+
+static void BrDiagTestQuadDestroyLocked() {
+    if (g_tq.prog) { glDeleteProgram(g_tq.prog); g_tq.prog = 0; }
+    if (g_tq.vao)  { glDeleteVertexArrays(1, &g_tq.vao); g_tq.vao = 0; }
+    if (g_tq.vbo)  { glDeleteBuffers(1, &g_tq.vbo); g_tq.vbo = 0; }
+    g_tq.ctx = EGL_NO_CONTEXT;
+    g_tq.drawn_frames = 0;
+}
+
+void BrDiagDrawTestQuad(int w, int h) {
+    EGLContext cur = eglGetCurrentContext();
+    if (g_tq.prog == 0 || g_tq.ctx != cur) {
+        if (g_tq.prog != 0 && g_tq.ctx == cur) {
+            BrDiagTestQuadDestroyLocked();
+        } else {
+            // Ресурсы старого контекста недоступны — просто сбрасываем
+            g_tq.prog = 0;
+            g_tq.vao = 0;
+            g_tq.vbo = 0;
+        }
+
+        const char* vs_src =
+            "layout (location = 0) in vec2 p;\n"
+            "void main() { gl_Position = vec4(p, 0.0, 1.0); }\n";
+        const char* fs_src =
+            "precision mediump float;\n"
+            "layout (location = 0) out vec4 c;\n"
+            "void main() { c = vec4(1.0, 0.0, 1.0, 1.0); }\n";
+        const GLuint vs = BrDiagCompileShader(GL_VERTEX_SHADER, vs_src, "testquad-vertex");
+        const GLuint fs = BrDiagCompileShader(GL_FRAGMENT_SHADER, fs_src, "testquad-fragment");
+        const GLuint prg = glCreateProgram();
+        glAttachShader(prg, vs);
+        glAttachShader(prg, fs);
+        glLinkProgram(prg);
+        GLint ok = 0;
+        glGetProgramiv(prg, GL_LINK_STATUS, &ok);
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+        if (!ok) {
+            char log[512] = {0};
+            glGetProgramInfoLog(prg, sizeof(log), nullptr, log);
+            glDeleteProgram(prg);
+            BR_BRIDGE_LOGE("DIAG: testquad: link=0, log: %s", log);
+            return;
+        }
+        g_tq.prog = prg;
+
+        // Квадрат 120x120 в правом нижнем углу (окно-координаты -> clip)
+        const float x0 = static_cast<float>(w) - 140.0f;
+        const float x1 = static_cast<float>(w) - 20.0f;
+        const float y0 = 20.0f;
+        const float y1 = 140.0f;
+        const float cx0 = 2.0f * x0 / static_cast<float>(w) - 1.0f;
+        const float cx1 = 2.0f * x1 / static_cast<float>(w) - 1.0f;
+        const float cy0 = 2.0f * y0 / static_cast<float>(h) - 1.0f;
+        const float cy1 = 2.0f * y1 / static_cast<float>(h) - 1.0f;
+        const float verts[6][2] = {
+            {cx0, cy0}, {cx1, cy0}, {cx1, cy1},
+            {cx0, cy0}, {cx1, cy1}, {cx0, cy1},
+        };
+        glGenVertexArrays(1, &g_tq.vao);
+        glBindVertexArray(g_tq.vao);
+        glGenBuffers(1, &g_tq.vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, g_tq.vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, nullptr);
+        glEnableVertexAttribArray(0);
+        glBindVertexArray(0);
+        g_tq.ctx = cur;
+
+        BR_BRIDGE_LOGI("DIAG: тест-квадрат создан (prog=%u). Ожидайте ярко-пурпурный квадрат 120x120 в правом нижнем углу!",
+                       static_cast<unsigned>(prg));
+    }
+
+    // Отрисовка (FBO 0 должен быть уже привязан вызывающим кодом)
+    glUseProgram(g_tq.prog);
+    glBindVertexArray(g_tq.vao);
+    glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glEnable(GL_DEPTH_TEST);
+    glBindVertexArray(0);
+    glUseProgram(0);
+
+    ++g_tq.drawn_frames;
+    if (g_tq.drawn_frames == 1 || (g_tq.drawn_frames % 300) == 0) {
+        BR_BRIDGE_LOGI("DIAG: тест-квадрат: кадров=%d ctx=%p", g_tq.drawn_frames, cur);
+    }
+}
+// ===== /TEMP DIAG =====
+
+void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_surf, const char* src_tag);
 
 #endif // defined(__ANDROID__)
 
@@ -760,13 +786,13 @@ bool InternalImGuiBridge::AttachStandaloneRenderer(uintptr_t module_base,
         render_label = "JNILib_step (VA 0x01901D44, собственный GLES3)";
     }
 
-    bool step_hooked = false;
+    bool render_hooked = false;
     if (step_addr != 0) {
-        step_hooked = br::hook::Arm64Hook::Install(
+        render_hooked = br::hook::Arm64Hook::Install(
             reinterpret_cast<void*>(step_addr),
             reinterpret_cast<void*>(&Hooked_JNILib_step),
             reinterpret_cast<void**>(&g_orig_jnilib_step));
-        if (step_hooked) {
+        if (render_hooked) {
             g_rt_table.render_hook_name = render_label;
             BR_BRIDGE_LOGI("Установлен хук рендера собственного ImGui: %s @ 0x%lx",
                            render_label, static_cast<unsigned long>(step_addr));
@@ -776,12 +802,12 @@ bool InternalImGuiBridge::AttachStandaloneRenderer(uintptr_t module_base,
         }
     }
 
-    // 1b. ДОПОЛНИТЕЛЬНО ставим хук eglSwapBuffers (не только как фолбэк):
-    //     если игра работает на нескольких GL-контекстах, JNILib_step может
-    //     выполняться в контексте, НЕ привязанном к экранной поверхности —
-    //     тогда оверлей рисуется невидимо. Кадр перед eglSwapBuffers всегда
-    //     в контексте, который реально презентует на экран (смена EGLContext
-    //     уже обрабатывается в RenderStandaloneImGuiFrame: ресоз GL-ресурсов).
+    // ДОПОЛНИТЕЛЬНО (всегда, в дополнение к JNILib_step): хуки eglSwapBuffers.
+    // Если JNILib_step вызывается в контексте без экранной поверхности
+    // (игра на нескольких GL-контекстах), кадр перед eglSwapBuffers
+    // гарантированно в презентующем контексте. Смена EGLContext уже
+    // обрабатывается в RenderStandaloneImGuiFrame (ресоз GL-ресурсов).
+    const bool step_ok = render_hooked;
     bool swap_hooked = false;
     {
         void* libegl_swap = dlsym(RTLD_DEFAULT, "eglSwapBuffers");
@@ -789,54 +815,33 @@ bool InternalImGuiBridge::AttachStandaloneRenderer(uintptr_t module_base,
             libegl_swap = reinterpret_cast<void*>(eglGetProcAddress("eglSwapBuffers"));
         }
         if (libegl_swap) {
-            swap_hooked = br::hook::Arm64Hook::Install(
+            const bool ok1 = br::hook::Arm64Hook::Install(
                 libegl_swap,
                 reinterpret_cast<void*>(&Hooked_eglSwapBuffers),
                 reinterpret_cast<void**>(&g_orig_egl_swap));
-            if (swap_hooked) {
-                if (!step_hooked) {
-                    g_rt_table.render_hook_name = "eglSwapBuffers (libEGL.so, собственный GLES3)";
-                }
-                BR_BRIDGE_LOGI("Установлен ДОП. хук рендера (кадр перед презентацией): eglSwapBuffers @ %p", libegl_swap);
-            } else {
-                BR_BRIDGE_LOGW("Не удалось поставить доп. хук eglSwapBuffers @ %p", libegl_swap);
-            }
+            swap_hooked = swap_hooked || ok1;
+            BR_BRIDGE_LOGI("Доп. хук рендера: eglSwapBuffers (libEGL) @ %p -> %s",
+                           libegl_swap, ok1 ? "OK" : "НЕ УДАЛСЯ");
         }
-
-        // 1c. Драйверский eglSwapBuffers: игра/Noesis часто берут swap через
-        //     eglGetProcAddress — это ДРУГАЯ функция (обход экспорта libEGL.so),
-        //     и хук на экспорт не срабатывает. Если адрес отличается — хукам его.
+        // Драйверский swap (игра может звать его через eglGetProcAddress,
+        // минуя экспорт libEGL.so)
         void* drv_swap = reinterpret_cast<void*>(eglGetProcAddress("eglSwapBuffers"));
         if (drv_swap && drv_swap != libegl_swap) {
-            const bool drv_ok = br::hook::Arm64Hook::Install(
+            const bool ok2 = br::hook::Arm64Hook::Install(
                 drv_swap,
                 reinterpret_cast<void*>(&Hooked_eglSwapBuffersDrv),
                 reinterpret_cast<void**>(&g_orig_egl_swap_drv));
-            swap_hooked = swap_hooked || drv_ok;
-            BR_BRIDGE_LOGI("DIAG: драйверский eglSwapBuffers=%p (libEGL-экспорт=%p) -> хук %s",
-                           drv_swap, libegl_swap, drv_ok ? "УСТАНОВЛЕН" : "НЕ УДАЛСЯ");
-        } else {
-            BR_BRIDGE_LOGI("DIAG: eglGetProcAddress(\"eglSwapBuffers\") == libEGL-экспорт (%p)", drv_swap);
-        }
-
-        // 1d. TEMP DIAG: карта контекстов/поверхностей (где реальная экранная surface)
-        void* mkc = dlsym(RTLD_DEFAULT, "eglMakeCurrent");
-        if (mkc && br::hook::Arm64Hook::Install(
-                       mkc,
-                       reinterpret_cast<void*>(&Hooked_eglMakeCurrent),
-                       reinterpret_cast<void**>(&g_orig_egl_make_current))) {
-            BR_BRIDGE_LOGI("DIAG: хук eglMakeCurrent @ %p", mkc);
-        }
-        void* cws = dlsym(RTLD_DEFAULT, "eglCreateWindowSurface");
-        if (cws && br::hook::Arm64Hook::Install(
-                       cws,
-                       reinterpret_cast<void*>(&Hooked_eglCreateWindowSurface),
-                       reinterpret_cast<void**>(&g_orig_egl_create_window_surface))) {
-            BR_BRIDGE_LOGI("DIAG: хук eglCreateWindowSurface @ %p", cws);
+            swap_hooked = swap_hooked || ok2;
+            BR_BRIDGE_LOGI("Доп. хук рендера: eglSwapBuffers (драйвер) @ %p (libEGL=%p) -> %s",
+                           drv_swap, libegl_swap, ok2 ? "OK" : "НЕ УДАЛСЯ");
         }
     }
+    render_hooked = step_ok || swap_hooked;
+    if (!step_ok && swap_hooked) {
+        g_rt_table.render_hook_name = "eglSwapBuffers (собственный GLES3)";
+    }
 
-    if (!step_hooked && !swap_hooked) {
+    if (!render_hooked) {
         if (client_so) {
             dlclose(client_so);
         }
@@ -899,10 +904,8 @@ void InternalImGuiBridge::Detach() noexcept {
     g_orig_multitouch  = nullptr;
     g_orig_jnilib_step = nullptr;
 #if defined(__ANDROID__)
-    g_orig_egl_swap             = nullptr;
-    g_orig_egl_swap_drv         = nullptr;
-    g_orig_egl_make_current     = nullptr;
-    g_orig_egl_create_window_surface = nullptr;
+    g_orig_egl_swap      = nullptr;
+    g_orig_egl_swap_drv  = nullptr;
 #endif
 }
 
