@@ -498,8 +498,10 @@ void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_sur
         ImDrawData* dd0 = ImGui::GetDrawData();
         static int s_diag_logged = 0;
         if (s_diag_logged < 3 || (g_rt_table.rendered_frames_total % 60) == 0) {
-            BR_BRIDGE_LOGI("DIAG: кадр=%llu DrawData: CmdLists=%d Vtx=%d Idx=%d",
+            BR_BRIDGE_LOGI("DIAG: кадр=%llu ctx=%p surf=%p DrawData: CmdLists=%d Vtx=%d Idx=%d",
                            (unsigned long long)g_rt_table.rendered_frames_total,
+                           eglGetCurrentContext(),
+                           eglGetCurrentSurface(EGL_DRAW),
                            dd0 ? dd0->CmdListsCount : -1,
                            dd0 ? dd0->TotalVtxCount : -1,
                            dd0 ? dd0->TotalIdxCount : -1);
@@ -712,13 +714,13 @@ bool InternalImGuiBridge::AttachStandaloneRenderer(uintptr_t module_base,
         render_label = "JNILib_step (VA 0x01901D44, собственный GLES3)";
     }
 
-    bool render_hooked = false;
+    bool step_hooked = false;
     if (step_addr != 0) {
-        render_hooked = br::hook::Arm64Hook::Install(
+        step_hooked = br::hook::Arm64Hook::Install(
             reinterpret_cast<void*>(step_addr),
             reinterpret_cast<void*>(&Hooked_JNILib_step),
             reinterpret_cast<void**>(&g_orig_jnilib_step));
-        if (render_hooked) {
+        if (step_hooked) {
             g_rt_table.render_hook_name = render_label;
             BR_BRIDGE_LOGI("Установлен хук рендера собственного ImGui: %s @ 0x%lx",
                            render_label, static_cast<unsigned long>(step_addr));
@@ -728,24 +730,35 @@ bool InternalImGuiBridge::AttachStandaloneRenderer(uintptr_t module_base,
         }
     }
 
-    if (!render_hooked) {
+    // 1b. ДОПОЛНИТЕЛЬНО ставим хук eglSwapBuffers (не только как фолбэк):
+    //     если игра работает на нескольких GL-контекстах, JNILib_step может
+    //     выполняться в контексте, НЕ привязанном к экранной поверхности —
+    //     тогда оверлей рисуется невидимо. Кадр перед eglSwapBuffers всегда
+    //     в контексте, который реально презентует на экран (смена EGLContext
+    //     уже обрабатывается в RenderStandaloneImGuiFrame: ресоз GL-ресурсов).
+    bool swap_hooked = false;
+    {
         void* egl_sym = dlsym(RTLD_DEFAULT, "eglSwapBuffers");
         if (!egl_sym) {
             egl_sym = reinterpret_cast<void*>(eglGetProcAddress("eglSwapBuffers"));
         }
         if (egl_sym) {
-            render_hooked = br::hook::Arm64Hook::Install(
+            swap_hooked = br::hook::Arm64Hook::Install(
                 egl_sym,
                 reinterpret_cast<void*>(&Hooked_eglSwapBuffers),
                 reinterpret_cast<void**>(&g_orig_egl_swap));
-            if (render_hooked) {
-                g_rt_table.render_hook_name = "eglSwapBuffers (libEGL.so, собственный GLES3)";
-                BR_BRIDGE_LOGI("Установлен хук рендера собственного ImGui: eglSwapBuffers @ %p", egl_sym);
+            if (swap_hooked) {
+                if (!step_hooked) {
+                    g_rt_table.render_hook_name = "eglSwapBuffers (libEGL.so, собственный GLES3)";
+                }
+                BR_BRIDGE_LOGI("Установлен ДОП. хук рендера (кадр перед презентацией): eglSwapBuffers @ %p", egl_sym);
+            } else {
+                BR_BRIDGE_LOGW("Не удалось поставить доп. хук eglSwapBuffers @ %p", egl_sym);
             }
         }
     }
 
-    if (!render_hooked) {
+    if (!step_hooked && !swap_hooked) {
         if (client_so) {
             dlclose(client_so);
         }
