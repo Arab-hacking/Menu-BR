@@ -229,6 +229,7 @@ void QuerySurfaceDimensions(EGLDisplay dpy, EGLSurface surf, int& out_w, int& ou
 void BrDiagControlShader();
 void BrDiagDrawTestQuad(int w, int h);
 void BrDiagAutopsy(const char* src_tag);
+void BrDiagRepairImGuiProgram();
 
 void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_surf, const char* src_tag) {
     if (!g_attached.load(std::memory_order_acquire) || !g_render_cb) {
@@ -347,6 +348,7 @@ void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_sur
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
     ImGui_ImplOpenGL3_NewFrame();
+    BrDiagRepairImGuiProgram(); // TEMP DIAG: починить программу imgui, если CreateDeviceObjects не смогла
     ImGui::NewFrame();
 
     ++g_rt_table.rendered_frames_total;
@@ -460,6 +462,34 @@ static const char* kCtrlFragmentGlsl300es =
     "    Out_Color = Frag_Color * texture(Texture, Frag_UV.st);\n"
     "}\n";
 
+// ТОЧНО vertex из imgui_impl_opengl3.cpp (с precision highp)
+static const char* kImguiExactVertGlsl300es =
+    "precision highp float;\n"
+    "layout (location = 0) in vec2 Position;\n"
+    "layout (location = 1) in vec2 UV;\n"
+    "layout (location = 2) in vec4 Color;\n"
+    "uniform mat4 ProjMtx;\n"
+    "out vec2 Frag_UV;\n"
+    "out vec4 Frag_Color;\n"
+    "void main()\n"
+    "{\n"
+    "    Frag_UV = UV;\n"
+    "    Frag_Color = Color;\n"
+    "    gl_Position = ProjMtx * vec4(Position.xy,0,1);\n"
+    "}\n";
+
+// ТОЧНО fragment из imgui_impl_opengl3.cpp, вариант glsl 130 (desktop,
+// БЕЗ precision) — тот, что выбирается, если sscanf не распарсил версию
+static const char* kImgui130FragDesktop =
+    "uniform sampler2D Texture;\n"
+    "in vec2 Frag_UV;\n"
+    "in vec4 Frag_Color;\n"
+    "out vec4 Out_Color;\n"
+    "void main()\n"
+    "{\n"
+    "    Out_Color = Frag_Color * texture(Texture, Frag_UV.st);\n"
+    "}\n";
+
 static GLuint BrDiagCompileShader(GLenum type, const char* src, const char* tag) {
     GLuint sh = glCreateShader(type);
     const GLchar* parts[2] = {"#version 300 es\n", src};
@@ -484,6 +514,25 @@ void BrDiagControlShader() {
     }
     s_done = true;
 
+    // Прямая проверка: парсит ли sscanf версию (imgui делает
+    // sscanf(GlslVersionString, "#version %d", &v) — при провале
+    // выбираются desktop-130 шейдеры, а его fragment без precision
+    // не компилируется под ES 3.0)
+    {
+        int pv = 130;
+        const int pr = sscanf("#version 300 es\n", "#version %d", &pv);
+        BR_BRIDGE_LOGI("DIAG: sscanf probe: r=%d v=%d (ожидается r=1 v=300)", pr, pv);
+    }
+
+    // Точный vertex imgui (с precision highp) и desktop-130 fragment
+    // (без precision) — фиксируем, как Mali их принимает
+    {
+        const GLuint ev = BrDiagCompileShader(GL_VERTEX_SHADER, kImguiExactVertGlsl300es, "imgui-vertex-300es(точный)");
+        glDeleteShader(ev);
+        const GLuint f130 = BrDiagCompileShader(GL_FRAGMENT_SHADER, kImgui130FragDesktop, "imgui-fragment-130(no-precision)");
+        glDeleteShader(f130);
+    }
+
     const GLuint vs = BrDiagCompileShader(GL_VERTEX_SHADER, kCtrlVertexGlsl300es, "vertex (=imgui)");
     const GLuint fs = BrDiagCompileShader(GL_FRAGMENT_SHADER, kCtrlFragmentGlsl300es, "fragment (=imgui)");
     const GLuint prg = glCreateProgram();
@@ -502,6 +551,79 @@ void BrDiagControlShader() {
     glDeleteProgram(prg);
     glDeleteShader(vs);
     glDeleteShader(fs);
+}
+
+// Авто-репар: если imgui не смог связать свою программу (LINK_STATUS=0 —
+// "invalid fragment shader"), строим рабочую ES3-программу (те же атрибуты
+// Position/UV/Color + униформы Texture/ProjMtx) и записываем её в слоты
+// ImGui_ImplOpenGL3_Data. Layout struct для нашей версии 1.90.9:
+//   +0  GLuint GlVersion, +4 char GlslVersionString[32],
+//   +44 GLuint FontTexture, +48 GLuint ShaderHandle,
+//   +52 GLint locTex, +56 GLint locProj,
+//   +60 GLuint locVtxPos, +64 GLuint locVtxUV, +68 GLuint locVtxColor
+void BrDiagRepairImGuiProgram() {
+    static int s_attempts = 0;
+    if (s_attempts >= 30) {
+        return;
+    }
+
+    void* bd_ptr = ImGui::GetIO().BackendRendererUserData;
+    if (!bd_ptr) {
+        return;
+    }
+    uint8_t* bd = static_cast<uint8_t*>(bd_ptr);
+    // sanity-проверка layout: в +4 должен быть "#version ..."
+    if (std::strncmp(reinterpret_cast<const char*>(bd + 4), "#version", 8) != 0) {
+        return;
+    }
+
+    const uint32_t cur_prog = *reinterpret_cast<const uint32_t*>(bd + 48);
+    GLint link = 1;
+    if (cur_prog) {
+        glGetProgramiv(cur_prog, GL_LINK_STATUS, &link);
+    }
+    if (cur_prog && link) {
+        return; // программа жива — делать ничего не надо
+    }
+    ++s_attempts;
+    if (s_attempts > 1) {
+        BR_BRIDGE_LOGW("DIAG: репар: программа imgui всё ещё битая (попытка %d)", s_attempts);
+    }
+
+    const GLuint vs = BrDiagCompileShader(GL_VERTEX_SHADER, kCtrlVertexGlsl300es, "repair-vert");
+    const GLuint fs = BrDiagCompileShader(GL_FRAGMENT_SHADER, kCtrlFragmentGlsl300es, "repair-frag");
+    const GLuint prg = glCreateProgram();
+    glAttachShader(prg, vs);
+    glAttachShader(prg, fs);
+    glLinkProgram(prg);
+    GLint ok = 0;
+    glGetProgramiv(prg, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[512] = {0};
+        glGetProgramInfoLog(prg, 512, nullptr, log);
+        glDeleteProgram(prg);
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+        BR_BRIDGE_LOGE("DIAG: репар: link=0, log: %s", log);
+        return;
+    }
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    if (cur_prog) {
+        glDeleteProgram(cur_prog);
+    }
+    *reinterpret_cast<uint32_t*>(bd + 48) = prg;
+    *reinterpret_cast<int32_t*>(bd + 52)  = static_cast<int32_t>(glGetUniformLocation(prg, "Texture"));
+    *reinterpret_cast<int32_t*>(bd + 56)  = static_cast<int32_t>(glGetUniformLocation(prg, "ProjMtx"));
+    *reinterpret_cast<uint32_t*>(bd + 60) = static_cast<uint32_t>(glGetAttribLocation(prg, "Position"));
+    *reinterpret_cast<uint32_t*>(bd + 64) = static_cast<uint32_t>(glGetAttribLocation(prg, "UV"));
+    *reinterpret_cast<uint32_t*>(bd + 68) = static_cast<uint32_t>(glGetAttribLocation(prg, "Color"));
+    BR_BRIDGE_LOGI("DIAG: репар: программа imgui ЗАМЕНЕНА рабочей (prog=%u, locTex=%d locProj=%d locPos=%u)",
+                   static_cast<unsigned>(prg),
+                   *reinterpret_cast<int32_t*>(bd + 52),
+                   *reinterpret_cast<int32_t*>(bd + 56),
+                   *reinterpret_cast<uint32_t*>(bd + 60));
 }
 
 struct BrDiagTestQuadState {

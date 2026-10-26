@@ -109,8 +109,8 @@ typedef void           GLvoid;
 #define GL_PIXEL_UNPACK_BUFFER       0x88EC
 #define GL_ARRAY_BUFFER_BINDING      0x8894
 #define GL_ELEMENT_ARRAY_BUFFER_BINDING 0x8895
-#define GL_PIXEL_PACK_BUFFER_BINDING   0x88EB
-#define GL_PIXEL_UNPACK_BUFFER_BINDING 0x88EC
+#define GL_PIXEL_PACK_BUFFER_BINDING   0x88ED
+#define GL_PIXEL_UNPACK_BUFFER_BINDING 0x88EE
 
 #define GL_TEXTURE0                  0x84C0
 #define GL_TEXTURE1                  0x84C1
@@ -166,11 +166,11 @@ typedef void           GLvoid;
 #define GL_CLIP_ORIGIN               0x935C
 #define GL_CLIP_DEPTH                0x935D
 
-#define GL_PRIMITIVE_RESTART         0x8558
+#define GL_PRIMITIVE_RESTART         0x8595
 
-#define GL_MAJOR_VERSION             0x2024
-#define GL_MINOR_VERSION             0x2023
-#define GL_NUM_EXTENSIONS            0x1F03
+#define GL_MAJOR_VERSION             0x821E
+#define GL_MINOR_VERSION             0x821F
+#define GL_NUM_EXTENSIONS            0x821D
 
 #define GL_VERTEX_ATTRIB_ARRAY_ENABLED   0x8622
 #define GL_VERTEX_ATTRIB_ARRAY_SIZE      0x8623
