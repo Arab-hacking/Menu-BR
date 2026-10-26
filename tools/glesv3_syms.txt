@@ -64,6 +64,7 @@ glGetProgramInfoLog
 glGetProgramiv
 glGetShaderInfoLog
 glGetShaderiv
+glGetTexLevelParameteriv
 glGetString
 glGetStringi
 glGetUniformLocation

@@ -229,14 +229,15 @@ static int g_diag_probe_glx = 0; // центр нашего окна (GL-коо�
 static int g_diag_probe_gly = 0;
 
 static void BrDrainGlErrors(const char* tag) {
-    int n = 0, last = 0;
+    int first = 0, n = 0;
     for (int i = 0; i < 16; ++i) {
-        last = static_cast<int>(glGetError());
-        if (last == 0) break;
+        const int e = static_cast<int>(glGetError());
+        if (e == 0) break;
+        if (n == 0) first = e;
         ++n;
     }
     if (n > 0) {
-        BR_BRIDGE_LOGI("DIAG: GL-ошибки [%s]: %d шт, последняя 0x%03X", tag, n, static_cast<unsigned>(last));
+        BR_BRIDGE_LOGI("DIAG: GL-ошибки [%s]: %d шт, первая 0x%03X", tag, n, static_cast<unsigned>(first));
     }
 }
 
@@ -444,19 +445,28 @@ void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_sur
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-    // TEMP DIAG v2: пиксель "после" нашего рендера + наши GL-ошибки (изолированно)
+    // TEMP DIAG v3: пиксель "после" в центре ГЛАВНОГО окна + наши GL-ошибки + GL-состояние (1-й кадр)
     {
         int glx = 600, gly = surf_h - 400;
         if (g_own_ctx && g_own_ctx->Windows.Size > 0) {
             for (int i = 0; i < g_own_ctx->Windows.Size; ++i) {
                 ImGuiWindow* w = g_own_ctx->Windows[i];
-                if (w && w->WasActive && !w->Hidden &&
-                    (w->Flags & ImGuiWindowFlags_NoInputs) == 0) {
+                if (!w || !w->WasActive || w->Hidden) continue;
+                const bool is_main = std::strstr(w->Name, "BRInspectorMain") != nullptr;
+                if (is_main || (g_diag_probe_glx == 0)) {
                     const int cx = static_cast<int>(w->Pos.x + w->Size.x * 0.5f);
                     const int cy = static_cast<int>(w->Pos.y + w->Size.y * 0.5f);
                     if (cx > 4 && cy > 4 && cx < surf_w - 4 && cy < surf_h - 4) {
                         glx = cx; gly = surf_h - cy;
                         g_diag_probe_glx = cx; g_diag_probe_gly = surf_h - cy;
+                        if (is_main) {
+                            static bool s_name_logged = false;
+                            if (!s_name_logged) {
+                                s_name_logged = true;
+                                BR_BRIDGE_LOGI("DIAG: главное окно: pos=(%.0f,%.0f) size=(%.0f,%.0f) name='%s'",
+                                               w->Pos.x, w->Pos.y, w->Size.x, w->Size.y, w->Name);
+                            }
+                        }
                         break;
                     }
                 }
@@ -464,6 +474,27 @@ void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_sur
         }
         BrDiagProbePixel("после", glx, gly);
         BrDrainGlErrors("наши, после RenderDrawData");
+
+        if (g_rt_table.rendered_frames_total == 1) {
+            GLint vao = 0, vbo = 0, ebo = 0, tex = 0, prog = 0;
+            GLint vbo_sz = 0, ebo_sz = 0, tex_w = 0, tex_h = 0, a0 = 0, link = 0;
+            glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
+            glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &vbo);
+            glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &ebo);
+            glGetIntegerv(GL_TEXTURE_BINDING_2D, &tex);
+            glGetIntegerv(GL_CURRENT_PROGRAM, &prog);
+            if (vbo != 0) glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &vbo_sz);
+            if (ebo != 0) glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &ebo_sz);
+            if (tex != 0) {
+                glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tex_w);
+                glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &tex_h);
+            }
+            glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &a0);
+            if (prog != 0) glGetProgramiv(static_cast<GLuint>(prog), GL_LINK_STATUS, &link);
+            BR_BRIDGE_LOGI("DIAG: GL-состояние после 1-го кадра: VAO=%d VBO=%d(sz=%d) EBO=%d(sz=%d) TEX=%d(%dx%d) Program=%d(link=%d) attrib0_en=%d",
+                           vao, vbo, vbo_sz, ebo, ebo_sz, tex, tex_w, tex_h, prog, link, a0);
+        }
+
         ImDrawData* dd0 = ImGui::GetDrawData();
         static int s_diag_logged = 0;
         if (s_diag_logged < 3 || (g_rt_table.rendered_frames_total % 60) == 0) {
@@ -475,7 +506,7 @@ void RenderStandaloneImGuiFrame(EGLDisplay explicit_dpy, EGLSurface explicit_sur
             if (s_diag_logged < 3) ++s_diag_logged;
         }
     }
-    // ===== /TEMP DIAG v2 =====
+    // ===== /TEMP DIAG v3 =====
 
     // Восстанавливаем исходные буферы кадра и маски игры
     glColorMask(prev_color_mask[0], prev_color_mask[1], prev_color_mask[2], prev_color_mask[3]);

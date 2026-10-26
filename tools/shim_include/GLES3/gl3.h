@@ -150,6 +150,10 @@ typedef void           GLvoid;
 #define GL_INFO_LOG_LENGTH           0x8B84
 #define GL_CURRENT_PROGRAM           0x8B8D
 
+#define GL_BUFFER_SIZE               0x8764
+#define GL_TEXTURE_WIDTH             0x1000
+#define GL_TEXTURE_HEIGHT            0x1001
+
 #define GL_VIEWPORT                  0x0BA2
 #define GL_SCISSOR_BOX               0x0C10
 #define GL_ACTIVE_TEXTURE            0x84E0
@@ -247,6 +251,7 @@ void     glGetFramebufferParameteriv(GLenum target, GLenum pname, GLint* params)
 void     glGetIntegerv(GLenum pname, GLint* data);
 void     glGetProgramInfoLog(GLuint program, GLsizei bufSize, GLsizei* length, GLchar* infoLog);
 void     glGetProgramiv(GLuint program, GLenum pname, GLint* params);
+void     glGetTexLevelParameteriv(GLenum target, GLint level, GLenum pname, GLint* params);
 void     glGetShaderInfoLog(GLuint shader, GLsizei bufSize, GLsizei* length, GLchar* infoLog);
 void     glGetShaderiv(GLuint shader, GLenum pname, GLint* params);
 const GLubyte* glGetString(GLenum name);
